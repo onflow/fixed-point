@@ -1,671 +1,521 @@
 package fix64
 
 import (
+	"fmt"
 	"math"
 	"testing"
+
+	"github.com/ericlagergren/decimal"
 )
 
-// Test Helpers
-func toUFix64(f float64) UFix64 {
-	return UFix64(f * fix64Scale)
+var decCtx = decimal.Context64
+
+// Converts a UFix64 to a decimal.Big
+func ufix64ToDecimal(f UFix64) *decimal.Big {
+	// UFix64 is an integer representing value * fix64Scale
+	// So: value = float64(f) / fix64Scale
+	// To avoid float conversion, use integer math: f / fix64Scale
+	// But decimal.Big can take string, so use string formatting
+	return new(decimal.Big).Quo(
+		new(decimal.Big).SetUint64(uint64(f)),
+		new(decimal.Big).SetUint64(uint64(fix64Scale)),
+	)
 }
 
-func fromUFix64(f UFix64) float64 {
-	return float64(f) / fix64Scale
+// Converts a Fix64 to a decimal.Big
+func fix64ToDecimal(f Fix64) *decimal.Big {
+	neg := false
+	uf := uint64(f)
+	if f < 0 {
+		neg = true
+		uf = uint64(-f)
+	}
+	dec := new(decimal.Big).Quo(
+		new(decimal.Big).SetUint64(uf),
+		new(decimal.Big).SetUint64(uint64(fix64Scale)),
+	)
+	if neg {
+		dec.Neg(dec)
+	}
+	return dec
 }
 
-func toFix64(f float64) Fix64 {
-	return Fix64(f * fix64Scale)
+func toUFix64(d *decimal.Big) UFix64 {
+	scaled := decimal.WithPrecision(30).Mul(d, new(decimal.Big).SetUint64(uint64(fix64Scale))).RoundToInt()
+
+	f, b := scaled.Uint64()
+	if !b {
+		// Print out an error message with the value that caused the panic
+		fmt.Printf("toUFix64: value out of range: %s\n", d.String())
+		panic("toUFix64: value out of range")
+	}
+
+	return UFix64(f)
 }
 
-func fromFix64(f Fix64) float64 {
-	return float64(f) / fix64Scale
-}
+func toFix64(d *decimal.Big) Fix64 {
+	scaled := decimal.WithPrecision(30).Mul(d, new(decimal.Big).SetUint64(uint64(fix64Scale)))
 
-const maxUFix64 = 184467440737.09551615
+	// There is a limitation in the decimal library that it treats large negative integers
+	// as being unrepresentable as Int64, even when they are. So, we do the conversion
+	// ourselves if the value is negative.
+	if scaled.Sign() < 0 {
+		// Flip to positive
+		scaled.Neg(scaled)
+
+		f, b := scaled.Uint64()
+		if !b {
+			// Print out an error message with the value that caused the panic
+			fmt.Printf("toFix64: value out of range: %s\n", d.String())
+			panic("toFix64: value out of range")
+		}
+
+		// NOTE: The most negative value has an absolute value one greater than the
+		// most positive value!
+		if f == (1 << 63) {
+			// The input is "the most negative value"
+			return Fix64(math.MinInt64)
+		} else if f > (1 << 63) {
+			// The number is too negative to fit in a signed int64
+			fmt.Printf("toFix64: value out of range: %s\n", d.String())
+			panic("toFix64: value out of range")
+		} else {
+			// Just flip the sign back
+			return Fix64(-f)
+		}
+	} else {
+		f, b := scaled.Int64()
+		if !b {
+			// Print out an error message with the value that caused the panic
+			fmt.Printf("toFix64: value out of range: %s\n", d.String())
+			panic("toFix64: value out of range")
+		}
+
+		return Fix64(f)
+	}
+}
 
 func TestAddUFix64(t *testing.T) {
-	tests := []struct {
-		a, b float64
-	}{
-		{1.0, 1.0},
-		{1.0, 0.0},
-		{0.0, 0.0},
-		{1.0, 1e8},
-		{1.0, 1e8 + 1.0},
-		{maxUFix64 - 1.0001, 1.0},
-		{math.Floor(maxUFix64 / 2), math.Floor(maxUFix64 / 2)},
-	}
-	margin := 1e-8
-	for _, tc := range tests {
-		a := toUFix64(tc.a)
-		b := toUFix64(tc.b)
-		res, err := AddUFix64(a, b)
-		expected := tc.a + tc.b
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, tc := range AddUFix64Tests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		res, err := a.Add(b)
 		if err != nil {
-			t.Errorf("AddUFix64(%f, %f) returned error: %v", tc.a, tc.b, err)
+			t.Errorf("AddUFix64(%.8f, %.8f) returned error: %v", tc.A, tc.B, err)
 			continue
 		}
-		fres := fromUFix64(res)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("AddUFix64(%f, %f) = %f, want %f (±%f)", tc.a, tc.b, fres, expected, margin)
+		expected := new(decimal.Big).Add(tc.A, tc.B)
+		decRes := ufix64ToDecimal(res)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) >= 0 {
+			t.Errorf("AddUFix64(%.8f, %.8f) = %s, want %s (±%s)", tc.A, tc.B, decRes.String(), expected.String(), margin.String())
 		}
 	}
-	// Test overflow cases
-	overflowTests := []struct {
-		a, b float64
-	}{
-		{maxUFix64, 1.0},
-		{maxUFix64, 0.01},
-		{maxUFix64, 0.001},
-		{maxUFix64, 0.00001},
-		{maxUFix64, 0.0000001},
-		{maxUFix64, 0.00000001},
-		{maxUFix64, maxUFix64},
-		{maxUFix64 / 2, maxUFix64 / 2},
-		{maxUFix64 / 2, maxUFix64/2 + 1.0},
-	}
-
-	for _, tc := range overflowTests {
-		a := toUFix64(tc.a)
-		b := toUFix64(tc.b)
-		_, err := AddUFix64(a, b)
+	for _, tc := range AddUFix64OverflowTests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		_, err := a.Add(b)
 		if err != ErrOverflow {
-			t.Errorf("AddUFix64(%f, %f) expected overflow error, got: %v", tc.a, tc.b, err)
+			t.Errorf("AddUFix64(%.8f, %.8f) expected overflow error, got: %v", tc.A, tc.B, err)
+		}
+	}
+}
+
+func TestAddFix64(t *testing.T) {
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, tc := range AddFix64Tests {
+		a := toFix64(tc.A)
+		b := toFix64(tc.B)
+		res, err := a.Add(b)
+		if err != nil && tc.A.Sign() >= 0 && tc.B.Sign() >= 0 {
+			t.Errorf("AddFix64(%s, %s) unexpected error: %v", tc.A, tc.B, err)
+			continue
+		}
+		if err == nil {
+			expected := new(decimal.Big).Add(tc.A, tc.B)
+			decRes := fix64ToDecimal(res)
+			fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+			if fdiff.Cmp(margin) >= 0 {
+				t.Errorf("AddFix64(%s, %s) = %s, want %s (±%s)", tc.A, tc.B, decRes.String(), expected.String(), margin.String())
+			}
+		}
+	}
+	// Overflow tests for AddFix64
+	for _, tc := range AddFix64OverflowTests {
+		a := toFix64(tc.A)
+		b := toFix64(tc.B)
+		_, err := a.Add(b)
+		if err != ErrOverflow {
+			t.Errorf("AddFix64(%s, %s) expected overflow error, got: %v", tc.A, tc.B, err)
+		}
+	}
+	// Negative overflow tests for AddFix64
+	for _, tc := range AddFix64NegOverflowTests {
+		a := toFix64(tc.A)
+		b := toFix64(tc.B)
+		_, err := a.Add(b)
+		if err != ErrNegOverflow {
+			t.Errorf("AddFix64(%s, %s) expected negative overflow error, got: %v", tc.A, tc.B, err)
 		}
 	}
 }
 
 func TestSubUFix64(t *testing.T) {
-	tests := []struct {
-		a, b float64
-	}{
-		{1.0, 1.0},
-		{1.0, 0.0},
-		{0.0, 0.0},
-		{1.0, 1e8},
-		{1.0, 1e8 + 1.0},
-		{maxUFix64 - 1.0001, 1.0},
-		{math.Floor(maxUFix64 / 2), math.Floor(maxUFix64 / 2)},
-	}
-	margin := 1e-8
-	for _, tc := range tests {
-		a := toUFix64(tc.a)
-		b := toUFix64(tc.b)
-		res, err := SubUFix64(a, b)
-		expected := tc.a - tc.b
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for i, tc := range SubUFix64Tests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		res, err := a.Sub(b)
 		if err != nil {
-			t.Errorf("SubUFix64(%f, %f) returned error: %v", tc.a, tc.b, err)
+			t.Errorf("SubUFix64(%s, %s) (%d) returned error: %v", tc.A, tc.B, i, err)
 			continue
 		}
-		fres := fromUFix64(res)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("SubUFix64(%f, %f) = %f, want %f (±%f)", tc.a, tc.b, fres, expected, margin)
+		decRes := ufix64ToDecimal(res)
+		expected := new(decimal.Big).Sub(tc.A, tc.B)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) >= 0 {
+			t.Errorf("SubUFix64(%s, %s) = %s, want %s (±%s)", tc.A, tc.B, decRes.String(), expected.String(), margin.String())
 		}
 	}
-	// Test overflow cases
-	overflowTests := []struct {
-		a, b float64
-	}{
-		{maxUFix64, 1.0},
-		{maxUFix64, 0.01},
-		{maxUFix64, 0.001},
-		{maxUFix64, 0.00001},
-		{maxUFix64, 0.0000001},
-		{maxUFix64, 0.00000001},
-		{maxUFix64, maxUFix64},
-		{maxUFix64 / 2, maxUFix64 / 2},
-		{maxUFix64 / 2, maxUFix64/2 + 1.0},
+	for _, tc := range SubUFix64NegOverflowTests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		_, err := a.Sub(b)
+		if err != ErrNegOverflow {
+			t.Errorf("SubUFix64(%s, %s) expected negative overflow error, got: %v", tc.A, tc.B, err)
+		}
 	}
-	for _, tc := range overflowTests {
-		a := toUFix64(tc.a)
-		b := toUFix64(tc.b)
-		_, err := SubUFix64(a, b)
+}
+
+func TestSubFix64(t *testing.T) {
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for i, tc := range SubFix64Tests {
+		a := toFix64(tc.A)
+		b := toFix64(tc.B)
+		res, err := a.Sub(b)
+		if err != nil && !(tc.A.Sign() < 0 && tc.B.Sign() > 0) {
+			t.Errorf("SubFix64(%s, %s) (%d) unexpected error: %v", tc.A, tc.B, i, err)
+			continue
+		}
+		if err == nil {
+			expected := new(decimal.Big).Sub(tc.A, tc.B)
+			decRes := fix64ToDecimal(res)
+			fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+			if fdiff.Cmp(margin) >= 0 {
+				t.Errorf("SubFix64(%s, %s) = %s, want %s (±%s)", tc.A, tc.B, decRes.String(), expected.String(), margin.String())
+			}
+		}
+	}
+	// Overflow tests for SubFix64
+	for i, tc := range SubFix64OverflowTests {
+		a := toFix64(tc.A)
+		b := toFix64(tc.B)
+		_, err := a.Sub(b)
 		if err != ErrOverflow {
-			t.Errorf("SubUFix64(%f, %f) expected overflow error, got: %v", tc.a, tc.b, err)
+			t.Errorf("SubFix64(%s, %s) (%d) expected overflow error, got: %v", tc.A, tc.B, i, err)
+		}
+	}
+	// Negative overflow tests for SubFix64
+	for i, tc := range SubFix64NegOverflowTests {
+		a := toFix64(tc.A)
+		b := toFix64(tc.B)
+		_, err := a.Sub(b)
+		if err != ErrNegOverflow {
+			t.Errorf("SubFix64(%s, %s) (%d) expected negative overflow error, got: %v", tc.A, tc.B, i, err)
 		}
 	}
 }
 
 func TestMulUFix64(t *testing.T) {
-	tests := []struct {
-		a, b float64
-	}{
-		{1.0, 1.0},
-		{1.0, 0.0},
-		{0.0, 0.0},
-		{1.0, 1e8},
-		{1.0, 1e8 + 1.0},
-		{maxUFix64 - 1.0001, 1.0},
-		{math.Floor(maxUFix64 / 2), math.Floor(maxUFix64 / 2)},
-	}
-	margin := 1e-8
-	for _, tc := range tests {
-		a := toUFix64(tc.a)
-		b := toUFix64(tc.b)
-		res, err := MulUFix64(a, b)
-		expected := tc.a * tc.b
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for i, tc := range MulUFix64Tests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		res, err := a.Mul(b)
 		if err != nil {
-			t.Errorf("MulUFix64(%f, %f) returned error: %v", tc.a, tc.b, err)
+			t.Errorf("MulUFix64(%s, %s) (%d) returned error: %v", tc.A, tc.B, i, err)
 			continue
 		}
-		fres := fromUFix64(res)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("MulUFix64(%f, %f) = %f, want %f (±%f)", tc.a, tc.b, fres, expected, margin)
+		decRes := ufix64ToDecimal(res)
+		expected := new(decimal.Big).Mul(tc.A, tc.B)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) >= 0 {
+			t.Errorf("MulUFix64(%s, %s) = %s, want %s (±%s)", tc.A, tc.B, decRes.String(), expected.String(), margin.String())
 		}
 	}
-	// Test overflow cases
-	overflowTests := []struct {
-		a, b float64
-	}{
-		{maxUFix64, 1.0},
-		{maxUFix64, 0.01},
-		{maxUFix64, 0.001},
-		{maxUFix64, 0.00001},
-		{maxUFix64, 0.0000001},
-		{maxUFix64, maxUFix64},
-		{maxUFix64 / 2, maxUFix64 / 2},
-		{maxUFix64 / 2, maxUFix64/2 + 1.0},
-	}
-	for _, tc := range overflowTests {
-		a := toUFix64(tc.a)
-		b := toUFix64(tc.b)
-		_, err := MulUFix64(a, b)
+	for _, tc := range MulUFix64OverflowTests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		_, err := a.Mul(b)
 		if err != ErrOverflow {
-			t.Errorf("MulUFix64(%f, %f) expected overflow error, got: %v", tc.a, tc.b, err)
+			t.Errorf("MulUFix64(%s, %s) expected overflow error, got: %v", tc.A, tc.B, err)
+		}
+	}
+	for _, tc := range MulUFix64UnderflowTests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		_, err := a.Mul(b)
+		if err != ErrUnderflow {
+			t.Errorf("MulUFix64(%s, %s) expected underflow error, got: %v", tc.A, tc.B, err)
 		}
 	}
 }
 
 func TestDivUFix64(t *testing.T) {
-	tests := []struct {
-		a, b float64
-	}{
-		{1.0, 1.0},
-		{1.0, 0.0},
-		{0.0, 0.0},
-		{1.0, 1e8},
-		{1.0, 1e8 + 1.0},
-	}
-	margin := 1e-8
-	for _, tc := range tests {
-		a := toUFix64(tc.a)
-		b := toUFix64(tc.b)
-		res, err := DivUFix64(a, b)
-		expected := tc.a / tc.b
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, tc := range DivUFix64Tests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		res, err := a.Div(b)
 		if err != nil {
-			t.Errorf("DivUFix64(%f, %f) returned error: %v", tc.a, tc.b, err)
+			t.Errorf("DivUFix64(%s, %s) returned error: %v", tc.A, tc.B, err)
 			continue
 		}
-		fres := fromUFix64(res)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("DivUFix64(%f, %f) = %f, want %f (±%f)", tc.a, tc.b, fres, expected, margin)
+		decRes := ufix64ToDecimal(res)
+		if tc.B.Cmp(decimal.New(0, 0)) == 0 {
+			t.Errorf("DivUFix64(%s, %s) division by zero", tc.A, tc.B)
+			continue
+		}
+		expected := new(decimal.Big).Quo(tc.A, tc.B)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) > 0 {
+			t.Errorf("DivUFix64(%s, %s) = %s, want %s (±%s)", tc.A, tc.B, decRes.String(), expected.String(), margin.String())
 		}
 	}
-	// Test overflow cases
-	overflowTests := []struct {
-		a, b float64
-	}{
-		{maxUFix64, 1.0},
-		{maxUFix64, 0.01},
-		{maxUFix64, 0.001},
-		{maxUFix64, 0.00001},
-		{maxUFix64, 0.0000001},
-		{maxUFix64, maxUFix64},
-		{maxUFix64 / 2, maxUFix64 / 2},
-		{maxUFix64 / 2, maxUFix64/2 + 1.0},
-	}
-	for _, tc := range overflowTests {
-		a := toUFix64(tc.a)
-		b := toUFix64(tc.b)
-		_, err := DivUFix64(a, b)
+	for _, tc := range DivUFix64OverflowTests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		_, err := a.Div(b)
 		if err != ErrOverflow {
-			t.Errorf("DivUFix64(%f, %f) expected overflow error, got: %v", tc.a, tc.b, err)
+			t.Errorf("DivUFix64(%s, %s) expected overflow error, got: %v", tc.A, tc.B, err)
+		}
+	}
+	for i, tc := range DivUFix64UnderflowTests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		_, err := a.Div(b)
+		if err != ErrUnderflow {
+			t.Errorf("DivUFix64(%s, %s) (%d) expected underflow error, got: %v", tc.A, tc.B, i, err)
 		}
 	}
 }
 
 func TestFMDUFix64(t *testing.T) {
-	tests := []struct {
-		a, b, c float64
-	}{
-		{1.0, 1.0, 1.0},
-		{1.0, 0.0, 1.0},
-		{0.0, 1.0, 0.0},
-		{1.0, 1e8, 1e-8},
-		{1.0, 1e8 + 1.0, 1e-8},
-		{maxUFix64 - 1.0001, 1.0, 1.0},
-		{math.Floor(maxUFix64 / 2), math.Floor(maxUFix64 / 2), 1.0},
-	}
-	margin := 1e-8
-	for _, tc := range tests {
-		a := toUFix64(tc.a)
-		b := toUFix64(tc.b)
-		c := toUFix64(tc.c)
-		res, err := FMDUFix64(a, b, c)
-		expected := tc.a * tc.b / tc.c
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, tc := range FMDUFix64Tests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		c := toUFix64(tc.C)
+		res, err := a.FMD(b, c)
 		if err != nil {
-			t.Errorf("FMDUFix64(%f, %f, %f) returned error: %v", tc.a, tc.b, tc.c, err)
+			t.Errorf("FMDUFix64(%s, %s, %s) returned error: %v", tc.A, tc.B, tc.C, err)
 			continue
 		}
-		fres := fromUFix64(res)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("FMDUFix64(%f, %f, %f) = %f, want %f (±%f)", tc.a, tc.b, tc.c, fres, expected, margin)
+		decRes := ufix64ToDecimal(res)
+		if tc.C.Cmp(decimal.New(0, 0)) == 0 {
+			t.Errorf("FMDUFix64(%s, %s, %s) division by zero", tc.A, tc.B, tc.C)
+			continue
+		}
+		expected := new(decimal.Big).Quo(new(decimal.Big).Mul(tc.A, tc.B), tc.C)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) > 0 {
+			t.Errorf("FMDUFix64(%s, %s, %s) = %s, want %s (±%s)", tc.A, tc.B, tc.C, decRes.String(), expected.String(), margin.String())
 		}
 	}
-	// Test overflow cases
-	overflowTests := []struct {
-		a, b float64
-		c    float64
-	}{
-		{maxUFix64, 1.0, 1.0},
-		{maxUFix64, 0.01, 1.0},
-		{maxUFix64, 0.001, 1.0},
-		{maxUFix64, 0.00001, 1.0},
-		{maxUFix64, 0.0000001, 1.0},
-		{maxUFix64, maxUFix64, 1.0},
-		{maxUFix64 / 2, maxUFix64 / 2, 1.0},
-		{maxUFix64 / 2, maxUFix64/2 + 1.0, 1.0},
-	}
-	for _, tc := range overflowTests {
-		a := toUFix64(tc.a)
-		b := toUFix64(tc.b)
-		c := toUFix64(tc.c)
-		_, err := FMDUFix64(a, b, c)
+	for _, tc := range FMDUFix64OverflowTests {
+		a := toUFix64(tc.A)
+		b := toUFix64(tc.B)
+		c := toUFix64(tc.C)
+		_, err := a.FMD(b, c)
 		if err != ErrOverflow {
-			t.Errorf("FMDUFix64(%f, %f, %f) expected overflow error, got: %v", tc.a, tc.b, tc.c, err)
+			t.Errorf("FMDUFix64(%s, %s, %s) expected overflow error, got: %v", tc.A, tc.B, tc.C, err)
 		}
 	}
 }
 
 func TestSqrtUFix64(t *testing.T) {
-	tests := []struct {
-		a float64
-	}{
-		{1.0},
-		{2.0},
-		{3.0},
-		{4.0},
-		{5.0},
-		{6.0},
-		{7.0},
-		{8.0},
-		{9.0},
-		{10.0},
-		{16.0},
-		{25.0},
-		{49.0},
-		{64.0},
-		{81.0},
-		{100.0},
-		{1000.0},
-		{10000.0},
-		{100000.0},
-		{1000000.0},
-		{10000000.0},
-		{100000000.0},
-		{1000000000.0},
-		{maxUFix64},
-		{0.0},
-		{0.1},
-		{0.01},
-		{0.001},
-		{0.0001},
-		{0.00001},
-		{0.000001},
-	}
-	margin := 2e-8
-	for _, tc := range tests {
-		fx := toUFix64(tc.a)
-		res, err := SqrtUFix64(fx)
-		expected := math.Sqrt(tc.a)
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, a := range SqrtUFix64Tests {
+		fx := toUFix64(a)
+		res, err := fx.Sqrt()
 		if err != nil {
-			t.Errorf("SqrtUFix64(%f) returned error: %v", tc.a, err)
+			t.Errorf("SqrtUFix64(%s) returned error: %v", a.String(), err)
 			continue
 		}
-		fres := fromUFix64(res)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("SqrtUFix64(%f) = %f, want %f (±%f)", tc.a, fres, expected, margin)
+		decRes := ufix64ToDecimal(res)
+		expected := new(decimal.Big)
+		decCtx.Sqrt(expected, a)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) > 0 {
+			t.Errorf("SqrtUFix64(%s) = %s, want %s (±%s)", a.String(), decRes.String(), expected.String(), margin.String())
 		}
 	}
 }
 
 func TestLn(t *testing.T) {
-	tests := []float64{
-		2.7182818,
-		1.0,
-		1.1,
-		1.01,
-		1.001,
-		1.0001,
-		1.00001,
-		// 1.000001,
-		// 1.0000001,
-		// 1.00000001,
-		0.1,
-		0.01,
-		0.001,
-		0.0001,
-		0.00001,
-		0.000001,
-		0.0000001,
-		0.00000001,
-		0.9,
-		0.99,
-		0.999,
-		0.9999,
-		0.99999,
-		// 0.999999,
-		// 0.9999999,
-		// 0.99999999,
-		0.5,
-		10.0,
-		20.0,
-		50.0,
-		100.0,
-		500.0,
-		1000.0,
-		5000.0,
-		10000.0,
-		3.1415927,
-		7.3890561,
-		15.0,
-		25.0,
-		75.0,
-		250.0,
-		750.0,
-		2500.0,
-		7500.0,
-		100000.0,
-		1000000.0,
-		10000000.0,
-		100000000.0,
-		1000000000.0,
-		math.MaxInt64 / 1e8,
-	}
-	for _, tc := range tests {
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, tc := range LnTests {
 		fx := toUFix64(tc)
-		res, err := Ln(fx)
-		expected := math.Log(tc)
-		margin := 2e-8
+		res, err := fx.Ln()
 		if err != nil {
-			t.Errorf("Ln(%.8f) returned error: %v", tc, err)
+			t.Errorf("Ln(%s) returned error: %v", tc.String(), err)
 			continue
 		}
-		fres := fromFix64(res)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("Ln(%.8f) = %.8f, want %.8f (±%.8f)", tc, fres, expected, margin)
+		decRes := fix64ToDecimal(res)
+		expected := new(decimal.Big)
+		decCtx.Log(expected, tc)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) > 0 {
+			t.Errorf("Ln(%s) = %s, want %s (±%s)", tc.String(), decRes.String(), expected.String(), margin.String())
 		}
 	}
 }
 
 func TestExp(t *testing.T) {
-	tests := []struct {
-		input float64
-	}{
-		{0.0},
-		{1.0},
-		{2.0},
-		{5.0},
-		{7.9},
-		{7.99},
-		{8.0},
-		{8.01},
-		{8.1},
-		{10.0},
-		{15.0},
-		{15.9},
-		{15.99},
-		{16.0},
-		{16.01},
-		{16.1},
-		{17.0},
-		{20.0},
-		{25.0},
-		{25.2},
-		{-1.0},
-		{-2.0},
-		{-5.0},
-		{-6.0},
-		{-7.0},
-		{-8.0},
-		{-9.0},
-		{-10.0},
-		{-11.0},
-		{-12.0},
-		{-13.0},
-		{-14.0},
-		{-15.0},
-		{-15.1},
-		{-15.2},
-		{-15.3},
-		{-15.4},
-		{-15.5},
-		{-15.6},
-		{-15.7},
-		{-15.8},
-		{-15.9},
-		{-16.0},
-		{-17.0},
-		{-18.0},
-	}
-	margin := 2e-8
-
-	for _, tc := range tests {
-		fx := toFix64(tc.input)
-		res, err := Exp(fx)
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, input := range ExpTests {
+		fx := toFix64(input)
+		res, err := fx.Exp()
 		if err != nil {
-			t.Errorf("Exp(%f) returned error: %v", tc.input, err)
+			t.Errorf("Exp(%s) returned error: %v", input.String(), err)
 			continue
 		}
-		fres := fromFix64(res)
-		expected := math.Exp(tc.input)
+		decRes := fix64ToDecimal(res)
+		expected := new(decimal.Big)
+		decCtx.Exp(expected, input)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
 		scaledMargin := margin
-		if expected > 100 {
-			scaledMargin = expected / 1e9
+		if expected.Cmp(decimal.New(100, 0)) > 0 {
+			scaledMargin = new(decimal.Big).Quo(expected, decimal.New(1e9, 0))
 		}
-		if diff := math.Abs(fres - expected); diff > scaledMargin {
-			t.Errorf("Exp(%.8f) = %.8f, want %.8f (±%.8f)", tc, fres, expected, math.Abs(diff))
+		if fdiff.Cmp(scaledMargin) > 0 {
+			t.Errorf("Exp(%s) = %s, want %s (±%s)", input.String(), decRes.String(), expected.String(), scaledMargin.String())
 		}
 	}
 }
 
 func TestPow(t *testing.T) {
-	tests := []struct {
-		a, b float64
-	}{
-		{2.0, 3.0},
-		{9.0, 0.5},
-		{27.0, 1.0 / 3.0},
-		{5.0, 0.0},
-		{0.0, 5.0},
-	}
-	margin := 2e-8
-
-	for _, tc := range tests {
-		fxa := toFix64(tc.a)
-		fxb := toFix64(tc.b)
-		res, err := Pow(fxa, fxb)
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, tc := range PowTests {
+		fxa := toFix64(tc.A)
+		fxb := toFix64(tc.B)
+		res, err := fxa.Pow(fxb)
 		if err != nil {
-			t.Errorf("Pow(%f, %f) returned error: %v", tc.a, tc.b, err)
+			t.Errorf("Pow(%s, %s) returned error: %v", tc.A.String(), tc.B.String(), err)
 			continue
 		}
-		fres := fromFix64(res)
-		expected := math.Pow(tc.a, tc.b)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("Pow(%.8f, %.8f) = %.8f, want %.8f (±%.8f)", tc.a, tc.b, fres, expected, diff)
+		decRes := fix64ToDecimal(res)
+		expected := new(decimal.Big)
+		decCtx.Pow(expected, tc.A, tc.B)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) > 0 {
+			t.Errorf("Pow(%s, %s) = %s, want %s (±%s)", tc.A.String(), tc.B.String(), decRes.String(), expected.String(), margin.String())
 		}
 	}
 }
 
 func TestSin(t *testing.T) {
-	tests := []struct {
-		input float64
-	}{
-		{0.0},
-		{0.1},
-		{0.01},
-		{0.001},
-		{0.0001},
-		{0.00001},
-		{0.000001},
-		{0.0000001},
-		{0.00000001},
-		{0.00391486},
-		{0.00391486 + 1e-8},
-		{0.00391486 - 1e-8},
-		{0.2},
-		{0.28761102},
-		{0.3},
-		{0.4},
-		{0.5},
-		{0.6},
-		{0.7},
-		{0.8},
-		{0.9},
-		{1.0},
-		{2.0},
-		{3.0},
-		{4.0},
-		{5.0},
-		{6.0},
-		{7.0},
-		{2 - math.Pi/2},
-		{2 + 3*math.Pi/2},
-		{math.Pi / 2},
-		{math.Pi},
-		{3 * math.Pi / 2},
-		{2 * math.Pi},
-		{-math.Pi / 2},
-		{-math.Pi},
-		{-3 * math.Pi / 2},
-		{-2 * math.Pi},
-	}
-	margin := 2e-8
-
-	for _, tc := range tests {
-		fx := toFix64(tc.input)
-		res, err := Sin(fx)
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, input := range SinTests {
+		fx := toFix64(input)
+		res, err := fx.Sin()
 		if err != nil {
-			t.Errorf("Sin(%f) returned error: %v", tc.input, err)
+			t.Errorf("Sin(%s) returned error: %v", input.String(), err)
 			continue
 		}
-		fres := fromFix64(res)
-		expected := math.Sin(tc.input)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("Sin(%.8f) = %.8f, want %.8f (±%.8f)", tc.input, fres, expected, diff)
+		decRes := fix64ToDecimal(res)
+		expected := new(decimal.Big)
+		decCtx.Sin(expected, input)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) > 0 {
+			t.Errorf("Sin(%s) = %s, want %s (±%s)", input.String(), decRes.String(), expected.String(), margin.String())
 		}
 	}
 }
 
 func TestCos(t *testing.T) {
-	tests := []struct {
-		input float64
-	}{
-		{0.0},
-		{0.1},
-		{0.01},
-		{0.001},
-		{0.0001},
-		{0.00001},
-		{0.000001},
-		{0.0000001},
-		{0.00000001},
-		{0.2},
-		{0.28761102},
-		{0.3},
-		{0.4},
-		{0.5},
-		{0.6},
-		{0.7},
-		{0.8},
-		{0.9},
-		{1.0},
-		{2.0},
-		{3.0},
-		{4.0},
-		{5.0},
-		{6.0},
-		{7.0},
-		{math.Pi / 2},
-		{math.Pi},
-		{3 * math.Pi / 2},
-		{2 * math.Pi},
-		{-math.Pi / 2},
-		{-math.Pi},
-		{-3 * math.Pi / 2},
-		{-2 * math.Pi},
-	}
-	margin := 2e-8
-
-	for _, tc := range tests {
-		fx := toFix64(tc.input)
-		res, err := Cos(fx)
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, input := range CosTests {
+		fx := toFix64(input)
+		res, err := fx.Cos()
 		if err != nil {
-			t.Errorf("Cos(%f) returned error: %v", tc.input, err)
+			t.Errorf("Cos(%s) returned error: %v", input.String(), err)
 			continue
 		}
-		fres := fromFix64(res)
-		expected := math.Cos(tc.input)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("Cos(%.8f) = %.8f, want %.8f (±%.8f)", tc.input, fres, expected, diff)
+		decRes := fix64ToDecimal(res)
+		expected := new(decimal.Big)
+		decCtx.Cos(expected, input)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) > 0 {
+			t.Errorf("Cos(%s) = %s, want %s (±%s)", input.String(), decRes.String(), expected.String(), margin.String())
 		}
 	}
 }
 
 func TestTan(t *testing.T) {
-	tests := []struct {
-		input float64
-	}{
-		{0.0},
-		{0.1},
-		{0.01},
-		{0.001},
-		{0.0001},
-		{0.00001},
-		{0.000001},
-		{0.0000001},
-		{0.00000001},
-		{0.2},
-		{0.28761102},
-		{0.3},
-		{0.4},
-		{0.5},
-		{0.6},
-		{0.7},
-		{0.8},
-		{0.9},
-		{1.0},
-		{2.0},
-		{3.0},
-		{4.0},
-		{5.0},
-		{6.0},
-		{7.0},
-		{math.Pi / 4},
-		{math.Pi / 3},
-		{math.Pi},
-		// {3 * math.Pi / 2},
-		{2 * math.Pi},
-		{-math.Pi / 4},
-		// {-math.Pi / 2},
-		{-math.Pi},
-		// {-3 * math.Pi / 2},
-		{-2 * math.Pi},
-	}
-	margin := 4e-8
-
-	for _, tc := range tests {
-		fx := toFix64(tc.input)
-		res, err := Tan(fx)
+	margin := new(decimal.Big).SetFloat64(1e-8)
+	for _, input := range TanTests {
+		fx := toFix64(input)
+		res, err := fx.Tan()
 		if err != nil {
-			t.Errorf("Tan(%f) returned error: %v", tc.input, err)
+			t.Errorf("Tan(%s) returned error: %v", input.String(), err)
 			continue
 		}
-		fres := fromFix64(res)
-		expected := math.Tan(tc.input)
-		if diff := math.Abs(fres - expected); diff > margin {
-			t.Errorf("Tan(%.8f) = %.8f, want %.8f (±%.8f)", tc.input, fres, expected, diff)
+		decRes := fix64ToDecimal(res)
+		expected := new(decimal.Big)
+		decCtx.Tan(expected, input)
+		fdiff := new(decimal.Big).Sub(decRes, expected).Abs(new(decimal.Big))
+		if fdiff.Cmp(margin) > 0 {
+			t.Errorf("Tan(%s) = %s, want %s (±%s)", input.String(), decRes.String(), expected.String(), margin.String())
 		}
+	}
+}
+
+func BenchmarkAddUFix64(b *testing.B) {
+	a := UFix64(123456789)
+	c := UFix64(987654321)
+	for i := 0; i < b.N; i++ {
+		_, _ = a.Add(c)
+	}
+}
+
+func BenchmarkSubUFix64(b *testing.B) {
+	a := UFix64(987654321)
+	c := UFix64(123456789)
+	for i := 0; i < b.N; i++ {
+		_, _ = a.Sub(c)
+	}
+}
+
+func BenchmarkMulUFix64(b *testing.B) {
+	a := UFix64(123456789)
+	c := UFix64(987654321)
+	for i := 0; i < b.N; i++ {
+		_, _ = a.Mul(c)
+	}
+}
+
+func BenchmarkDivUFix64(b *testing.B) {
+	a := UFix64(987654321)
+	c := UFix64(123456789)
+	for i := 0; i < b.N; i++ {
+		_, _ = a.Div(c)
+	}
+}
+
+func BenchmarkFMDUFix64(b *testing.B) {
+	a := UFix64(123456789)
+	c := UFix64(987654321)
+	d := UFix64(55555555)
+	for i := 0; i < b.N; i++ {
+		_, _ = a.FMD(c, d)
+	}
+}
+
+func BenchmarkAbsFix64(b *testing.B) {
+	a := Fix64(-123456789)
+	for i := 0; i < b.N; i++ {
+		_ = a.Abs()
 	}
 }

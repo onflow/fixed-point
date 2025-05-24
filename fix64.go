@@ -13,17 +13,19 @@ type UFix128 [2]uint64
 type Fix128 [2]int64
 
 const fix64Scale = 1e8
-const fix128Scale = 1e24
+
+// const fix128Scale = 1e24
 
 var (
-	ErrOverflow  = errors.New("fix64: overflow")
-	ErrUnderflow = errors.New("fix64: underflow")
-	ErrDivByZero = errors.New("fix64: division by zero")
-	ErrDomain    = errors.New("fix64: input out of domain")
+	ErrOverflow    = errors.New("fix64: overflow")
+	ErrNegOverflow = errors.New("fix64: negative overflow")
+	ErrUnderflow   = errors.New("fix64: underflow")
+	ErrDivByZero   = errors.New("fix64: division by zero")
+	ErrDomain      = errors.New("fix64: input out of domain")
 )
 
 // AddUFix64 returns a + b, errors on overflow.
-func AddUFix64(a, b UFix64) (UFix64, error) {
+func (a UFix64) Add(b UFix64) (UFix64, error) {
 	sum, carry := bits.Add64(uint64(a), uint64(b), 0)
 	if carry != 0 {
 		return 0, ErrOverflow
@@ -31,21 +33,20 @@ func AddUFix64(a, b UFix64) (UFix64, error) {
 	return UFix64(sum), nil
 }
 
-func AddFix64(a, b Fix64) (Fix64, error) {
+func (a Fix64) Add(b Fix64) (Fix64, error) {
 	sum := a + b
 
-	// Overflow occurs when:
-	// 1. Both inputs are positive and result is negative
-	// 2. Both inputs are negative and result is positive
-	if (a > 0 && b > 0 && sum < 0) ||
-		(a < 0 && b < 0 && sum > 0) {
+	// Check for overflow by checking the sign bits of the operands and the result.
+	if a > 0 && b > 0 && sum < 0 {
 		return 0, ErrOverflow
+	} else if a < 0 && b < 0 && sum >= 0 {
+		return 0, ErrNegOverflow
 	}
 
 	return sum, nil
 }
 
-func AddUFix128(a, b UFix128) (UFix128, error) {
+func (a UFix128) Add(b UFix128) (UFix128, error) {
 	sum0, carry := bits.Add64(a[0], b[0], 0)
 	sum1, carry2 := bits.Add64(a[1], b[1], carry)
 	if carry2 != 0 {
@@ -54,7 +55,7 @@ func AddUFix128(a, b UFix128) (UFix128, error) {
 	return UFix128{sum0, sum1}, nil
 }
 
-func AddFix128(a, b Fix128) (Fix128, error) {
+func (a Fix128) Add(b Fix128) (Fix128, error) {
 	// Add as unsigned values
 	sum0, carry := bits.Add64(uint64(a[0]), uint64(b[0]), 0)
 	sum1, _ := bits.Add64(uint64(a[1]), uint64(b[1]), carry)
@@ -72,30 +73,31 @@ func AddFix128(a, b Fix128) (Fix128, error) {
 	return Fix128{int64(sum0), int64(sum1)}, nil
 }
 
-func SubUFix64(a, b UFix64) (UFix64, error) {
+func (a UFix64) Sub(b UFix64) (UFix64, error) {
 	diff, borrow := bits.Sub64(uint64(a), uint64(b), 0)
 	if borrow != 0 {
-		return 0, ErrOverflow
+		return 0, ErrNegOverflow
 	}
 	return UFix64(diff), nil
 }
 
-func SubFix64(a, b Fix64) (Fix64, error) {
+func (a Fix64) Sub(b Fix64) (Fix64, error) {
 	diff := a - b
 
 	// Overflow occurs when:
 	// 1. Subtracting a positive from a non-positive results in a positive
 	// 2. Subtracting a negative from a non-negative results in a negative
 	// Subtracting two non-zero values with the same sign can't overflow in a signed int64
-	if (a >= 0 && b < 0 && diff < 0) ||
-		(a <= 0 && b > 0 && diff > 0) {
+	if a >= 0 && b < 0 && diff < 0 {
 		return 0, ErrOverflow
+	} else if a < 0 && b >= 0 && diff >= 0 {
+		return 0, ErrNegOverflow
 	}
 
 	return Fix64(diff), nil
 }
 
-func AbsFix64(a Fix64) Fix64 {
+func (a Fix64) Abs() Fix64 {
 	if a < 0 {
 		return -a
 	}
@@ -137,12 +139,12 @@ func signedMulHelper(a, b int64, scale uint64) (int64, error) {
 	return int64(result) * sign, err
 }
 
-func MulUFix64(a, b UFix64) (UFix64, error) {
+func (a UFix64) Mul(b UFix64) (UFix64, error) {
 	result, err := unsignedMulHelper(uint64(a), uint64(b), fix64Scale)
 	return UFix64(result), err
 }
 
-func MulFix64(a, b Fix64) (Fix64, error) {
+func (a Fix64) Mul(b Fix64) (Fix64, error) {
 	result, err := signedMulHelper(int64(a), int64(b), fix64Scale)
 	return Fix64(result), err
 }
@@ -210,18 +212,18 @@ func signedDivHelper(a, b int64, scale uint64) (int64, error) {
 }
 
 // DivUFix64 returns a / b, errors on division by zero and overflow.
-func DivUFix64(a, b UFix64) (UFix64, error) {
+func (a UFix64) Div(b UFix64) (UFix64, error) {
 	quo, err := unsignedDivHelper(uint64(a), uint64(b), fix64Scale)
 	return UFix64(quo), err
 }
 
-func DivFix64(a, b Fix64) (Fix64, error) {
+func (a Fix64) Div(b Fix64) (Fix64, error) {
 	quo, err := signedDivHelper(int64(a), int64(b), fix64Scale)
 	return Fix64(quo), err
 }
 
 // returns a*b/c without intermediate rounding.
-func FMDUFix64(a, b, c UFix64) (UFix64, error) {
+func (a UFix64) FMD(b, c UFix64) (UFix64, error) {
 	if a == 0 || b == 0 {
 		return 0, nil
 	}
@@ -248,7 +250,7 @@ func FMDUFix64(a, b, c UFix64) (UFix64, error) {
 }
 
 // returns a*b/c without intermediate rounding.
-func FMDFix64(a, b, c Fix64) (Fix64, error) {
+func (a Fix64) FMD(b, c Fix64) (Fix64, error) {
 	if a == 0 || b == 0 {
 		return 0, nil
 	}
@@ -291,14 +293,14 @@ func FMDFix64(a, b, c Fix64) (Fix64, error) {
 
 // An internal signed fixed-point type for numbers close to 1.
 // Its denominator is 1e12, giving it an extra 4 decimal places of precision.
-// This increases the precision of our ln and exp calculations.
+// This increases the precision of our transcendental calculations.
 type fix64_12 int64
 
 const fix64_12Scale = 1e12
 
 func addFix64_12(a, b fix64_12) (fix64_12, error) {
 	// Adding two Fix64_12 numbers is equivalent to adding two Fix64 numbers
-	sum, e := AddFix64(Fix64(a), Fix64(b))
+	sum, e := Fix64(a).Add(Fix64(b))
 	return fix64_12(sum), e
 }
 
@@ -320,7 +322,7 @@ func twelveToFix(x fix64_12) Fix64 {
 	return Fix64(x / (fix64_12Scale / fix64Scale))
 }
 
-func SqrtUFix64(x UFix64) (UFix64, error) {
+func (x UFix64) Sqrt() (UFix64, error) {
 	if x == 0 {
 		return 0, nil
 	}
@@ -335,22 +337,22 @@ func SqrtUFix64(x UFix64) (UFix64, error) {
 
 	// Use Newton's method to approximate the square root.
 	for {
-		quo, err := DivUFix64(x, UFix64(est))
+		quo, err := x.Div(UFix64(est))
 		if err != nil {
 			return 0, err
 		}
 
-		diff, err := SubFix64(Fix64(quo), est)
+		diff, err := Fix64(quo).Sub(est)
 		if err != nil {
 			return 0, err
 		}
 
 		// When error is too small to matter, we can stop.
-		if uint64(AbsFix64(diff)) < 5 {
+		if uint64(diff.Abs()) < 5 {
 			break
 		}
 
-		est, err = AddFix64(Fix64(est), diff/2)
+		est, err = est.Add(diff / 2)
 		if err != nil {
 			return 0, err
 		}
@@ -359,7 +361,7 @@ func SqrtUFix64(x UFix64) (UFix64, error) {
 	return UFix64(est), nil
 }
 
-func Ln(x UFix64) (Fix64, error) {
+func (x UFix64) Ln() (Fix64, error) {
 	if x <= 0 {
 		return 0, ErrDomain
 	}
@@ -428,7 +430,7 @@ func Ln(x UFix64) (Fix64, error) {
 	return twelveToFix(sum), nil
 }
 
-func Exp(x Fix64) (Fix64, error) {
+func (x Fix64) Exp() (Fix64, error) {
 	var err error
 
 	// If x is 0, return 1.
@@ -502,7 +504,7 @@ func Exp(x Fix64) (Fix64, error) {
 
 	// Unwind our scaling factor by squaring the result as necessary.
 	for scaleFactor > 0 {
-		result, err = MulFix64(result, result)
+		result, err = result.Mul(result)
 
 		if err != nil {
 			return 0, err
@@ -511,7 +513,7 @@ func Exp(x Fix64) (Fix64, error) {
 	}
 
 	if inverted {
-		result, err = DivFix64(fix64Scale, result)
+		result, err = Fix64(fix64Scale).Div(result)
 		if err != nil {
 			return 0, err
 		}
@@ -520,19 +522,19 @@ func Exp(x Fix64) (Fix64, error) {
 	return result, nil
 }
 
-func Pow(a, b Fix64) (Fix64, error) {
+func (a Fix64) Pow(b Fix64) (Fix64, error) {
 	if a == 0 {
 		return 0, nil
 	}
-	lnA, err := Ln(UFix64(a))
+	lnA, err := UFix64(a).Ln()
 	if err != nil {
 		return 0, err
 	}
-	lnA_times_b, err := MulFix64(lnA, Fix64(b))
+	lnA_times_b, err := lnA.Mul(b)
 	if err != nil {
 		return 0, err
 	}
-	return Exp(Fix64(lnA_times_b))
+	return lnA_times_b.Exp()
 }
 
 const fix64PI = Fix64(314159265)
@@ -555,7 +557,7 @@ func clampAngle(x Fix64) Fix64 {
 	return x
 }
 
-func Sin(x Fix64) (Fix64, error) {
+func (x Fix64) Sin() (Fix64, error) {
 	// Remove multiples of 2*pi from the input, and reduce the input to the range
 	// (-pi, pi].
 	x = clampAngle(x)
@@ -623,31 +625,29 @@ func addHalfPi(x Fix64) Fix64 {
 	return x
 }
 
-func Cos(x Fix64) (Fix64, error) {
+func (x Fix64) Cos() (Fix64, error) {
 	if x == 0 {
 		return fix64Scale, nil
 	} else {
 		// cos(x) = sin(x + π/2)
 		x = addHalfPi(x)
-		return Sin(x)
+		return x.Sin()
 	}
 }
 
-func Tan(x Fix64) (Fix64, error) {
-	// tan(x) = sin(x) / cos(x).
-	sinX, err := Sin(x)
+func (x Fix64) Tan() (Fix64, error) {
+	sinX, err := x.Sin()
 	if err != nil {
 		return 0, err
 	}
-	cosX, err := Cos(x)
+	cosX, err := x.Cos()
 	if err != nil {
 		return 0, err
 	}
-
-	return DivFix64(sinX, cosX)
+	return sinX.Div(cosX)
 }
 
-func Atan(x Fix64) (Fix64, error) {
+func (x Fix64) Atan() (Fix64, error) {
 	if x == 0 {
 		return 0, nil
 	}
@@ -665,7 +665,7 @@ func Atan(x Fix64) (Fix64, error) {
 
 	if x > fix64Scale {
 		inverse = true
-		x, err = DivFix64(fix64Scale, x)
+		x, err = Fix64(fix64Scale).Div(x)
 		if err != nil {
 			return 0, err
 		}
@@ -675,7 +675,7 @@ func Atan(x Fix64) (Fix64, error) {
 
 	// We will compute atan(x) using the approximation:
 	// atan(x) = x - x^3/3 + x^5/5 - x^7/7 + ...
-	x_squared, err := MulFix64(x, x)
+	x_squared, err := x.Mul(x)
 	if err != nil {
 		return 0, err
 	}
@@ -689,7 +689,7 @@ func Atan(x Fix64) (Fix64, error) {
 
 		term = -term
 
-		term, err = MulFix64(term, x_squared)
+		term, err = term.Mul(x_squared)
 		if err == ErrUnderflow {
 			break
 		} else if err != nil {
@@ -698,18 +698,18 @@ func Atan(x Fix64) (Fix64, error) {
 
 		div += 2
 
-		term, err = DivFix64(term, Fix64(div*fix64Scale))
+		term, err = term.Div(Fix64(div * fix64Scale))
 		if err == ErrUnderflow {
 			break
 		} else if err != nil {
 			return 0, err
 		}
 
-		sum, _ = AddFix64(sum, term)
+		sum, _ = sum.Add(term)
 	}
 
 	if inverse {
-		sum, err = SubFix64(fix64PI/2, sum)
+		sum, err = Fix64(fix64PI / 2).Sub(sum)
 		if err != nil {
 			return 0, err
 		}
@@ -722,31 +722,31 @@ func Atan(x Fix64) (Fix64, error) {
 	return sum, nil
 }
 
-func Asin(x Fix64) (Fix64, error) {
+func (x Fix64) Asin() (Fix64, error) {
 	if x < -fix64Scale || x > fix64Scale {
 		return 0, ErrDomain
 	}
 
-	x_squared, err := MulFix64(x, x)
+	x_squared, err := x.Mul(x)
 	if err != nil {
 		return 0, err
 	}
 
-	one_minus_x_squared, err := SubUFix64(fix64Scale, UFix64(x_squared))
+	one_minus_x_squared, err := UFix64(fix64Scale).Sub(UFix64(x_squared))
 	if err != nil {
 		return 0, err
 	}
 
-	sqrt_one_minus_x_squared, err := SqrtUFix64(one_minus_x_squared)
+	sqrt_one_minus_x_squared, err := one_minus_x_squared.Sqrt()
 	if err != nil {
 		return 0, err
 	}
-	div, err := DivFix64(x, Fix64(sqrt_one_minus_x_squared))
+	div, err := x.Div(Fix64(sqrt_one_minus_x_squared))
 	if err != nil {
 		return 0, err
 	}
 
-	atanX, err := Atan(div)
+	atanX, err := div.Atan()
 
 	if err != nil {
 		return 0, err
@@ -755,12 +755,12 @@ func Asin(x Fix64) (Fix64, error) {
 	return atanX, nil
 }
 
-func Acos(x Fix64) (Fix64, error) {
+func (x Fix64) Acos() (Fix64, error) {
 	if x < -fix64Scale || x > fix64Scale {
 		return 0, ErrDomain
 	}
 
-	asinX, err := Asin(x)
+	asinX, err := x.Asin()
 	if err != nil {
 		return 0, err
 	}
