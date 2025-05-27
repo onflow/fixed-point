@@ -1,0 +1,722 @@
+package fixedPoint
+
+import (
+	"math"
+
+	"github.com/ericlagergren/decimal"
+)
+
+// Test data for fix64_test.go
+
+// decf is a helper to create *decimal.Big from float64
+func decf(f float64) *decimal.Big {
+
+	// Take "one step" away from zero to avoid issues with rounding down
+	// when we convert decimal.Big to fixed point types.
+	if f < 0.0 {
+		f = math.Nextafter(f, math.Inf(-1))
+	} else {
+		f = math.Nextafter(f, math.Inf(1))
+	}
+
+	return decimal.WithPrecision(60).SetFloat64(f)
+}
+
+func decu(i uint64) *decimal.Big {
+	return decimal.WithPrecision(60).SetUint64(i)
+}
+
+func deci(i int64) *decimal.Big {
+	return decimal.WithPrecision(60).SetMantScale(i, 0)
+}
+
+func sum(a *decimal.Big, b float64) *decimal.Big {
+	return decimal.WithPrecision(60).Add(a, decf(b))
+}
+
+func scale(a *decimal.Big) *decimal.Big {
+	return decimal.WithPrecision(60).Quo(a, decf(1e8))
+}
+
+var MaxUFix64 = decimal.WithPrecision(30).Quo(decu(math.MaxUint64), decu(1e8))
+var HalfMaxUFix64 = decimal.WithPrecision(30).Quo(decu(math.MaxUint64/2), decu(1e8))
+
+var MaxFix64 = decimal.WithPrecision(30).Quo(deci(math.MaxInt64), deci(1e8))
+var HalfMaxFix64 = decimal.WithPrecision(30).Quo(deci(math.MaxInt64/2), deci(1e8))
+var MinFix64 = decimal.WithPrecision(30).Quo(deci(math.MinInt64), deci(1e8))
+var HalfMinFix64 = decimal.WithPrecision(30).Quo(deci(math.MinInt64/2), deci(1e8))
+
+var AddUFix64Tests = []struct{ A, B, Expected uint64 }{
+	{0x0000000005F5E100, 0x0000000005F5E100, 0x000000000BEBC200}, // 1.0 + 1.0 = 2.0
+	{0x0000000005F5E100, 0x0000000000000000, 0x0000000005F5E100}, // 1.0 + 0.0 = 1.0
+	{0x0000000000000000, 0x0000000000000000, 0x0000000000000000}, // 0.0 + 0.0 = 0.0
+	{0x0000000000000000, 0x0000000005F5E100, 0x0000000005F5E100}, // 0.0 + 1.0 = 1.0
+	{0x0000000005F5E100, 0x002386F26FC10000, 0x002386F275B6E100}, // 1.0 + 1e8 = 100000001.0
+	{0x0000000005F5E100, 0x002386F275B6E100, 0x002386F27BACC200}, // 1.0 + 100000001.0 = 100000002.0
+	{0x00000002DFDAE800, 0x000000125EE0C480, 0x000000153EBBAC80}, // 123.456 + 789.012 = 912.468
+	{0x0000000AA2ACB320, 0x00000002DFDAE800, 0x0000000D82879B20}, // 456.789 + 123.456 = 580.245
+	{0x000000000000300C, 0x000000000000B220, 0x000000000000E22C}, // 0.000123 + 0.000456 = 0.000579
+	{0x0000000000013434, 0x0000000000007D64, 0x000000000001B198}, // 0.000789 + 0.000321 = 0.001110
+	{0x000008FB8FD98210, 0x0000011F71FB0450, 0x00000A1B01D48660}, // 98765.4321 + 12345.6789 = 111111.1110
+	{0x000002DB75839110, 0x00000278E638E760, 0x000005545BBC7870}, // 31415.9265 + 27182.8182 = 58598.7447
+	{0x00000278E638E760, 0x000002DB75839110, 0x000005545BBC7870}, // 27182.8182 + 31415.9265 = 58598.7447
+	{0x00000000075BCD15, 0x0000000005E30A78, 0x000000000D3ED78D}, // 1.23456789 + 0.98765432 = 2.22222221
+	{0x0000000005F5E0FF, 0x0000000000000001, 0x0000000005F5E100}, // 0.99999999 + 0.00000001 = 1.00000000
+	{0xFFFFFFFFFA0A1EFF, 0x0000000005F5E100, 0xFFFFFFFFFFFFFFFF}, // MaxUFix64 - 1.0 + 1.0 = 184467440737.09551615
+	{0xFFFFFFFFFF67697F, 0x0000000000989680, 0xFFFFFFFFFFFFFFFF}, // MaxUFix64 - 0.1 + 0.1 = 184467440737.09551615
+	{0xFFFFFFFFFFF0BDBF, 0x00000000000F4240, 0xFFFFFFFFFFFFFFFF}, // MaxUFix64 - 0.01 + 0.01 = 184467440737.09551615
+	{0xFFFFFFFFFFFE795F, 0x00000000000186A0, 0xFFFFFFFFFFFFFFFF}, // MaxUFix64 - 0.001 + 0.001 = 184467440737.09551615
+	{0xFFFFFFFFFFFFD8EF, 0x0000000000002710, 0xFFFFFFFFFFFFFFFF}, // MaxUFix64 - 0.0001 + 0.0001 = 184467440737.09551615
+	{0xFFFFFFFFFFFFFC17, 0x00000000000003E8, 0xFFFFFFFFFFFFFFFF}, // MaxUFix64 - 0.00001 + 0.00001 = 184467440737.09551615
+	{0xFFFFFFFFFFFFFF9B, 0x0000000000000064, 0xFFFFFFFFFFFFFFFF}, // MaxUFix64 - 0.000001 + 0.000001 = 184467440737.09551615
+	{0xFFFFFFFFFFFFFFF5, 0x000000000000000A, 0xFFFFFFFFFFFFFFFF}, // MaxUFix64 - 0.0000001 + 0.0000001 = 184467440737.09551615
+	{0xFFFFFFFFFFFFFFFE, 0x0000000000000001, 0xFFFFFFFFFFFFFFFF}, // MaxUFix64 - 0.00000001 + 0.00000001 = 184467440737.09551615
+	{0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFE}, // HalfMaxUFix64 + HalfMaxUFix64 = 184467440737.09551614
+	{0x8000000000000000, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF}, // HalfMaxUFix64 + 0.00000001 + HalfMaxUFix64 = 184467440737.09551615
+	{0x7FFFFFFFFFFFFFFF, 0x8000000000000000, 0xFFFFFFFFFFFFFFFF}, // HalfMaxUFix64 + HalfMaxUFix64 + 0.00000001 = 184467440737.09551615
+}
+
+var AddUFix64OverflowTests = []struct{ A, B uint64 }{
+	{0xFFFFFFFFFFFFFFFF, 0x0000000005F5E100}, // MaxUFix64 + 1.0 = overflow
+	{0xFFFFFFFFFFFFFFFF, 0x00000000000F4240}, // MaxUFix64 + 0.01 = overflow
+	{0xFFFFFFFFFFFFFFFF, 0x00000000000186A0}, // MaxUFix64 + 0.001 = overflow
+	{0xFFFFFFFFFFFFFFFF, 0x00000000000003E8}, // MaxUFix64 + 0.00001 = overflow
+	{0xFFFFFFFFFFFFFFFF, 0x000000000000000A}, // MaxUFix64 + 0.0000001 = overflow
+	{0xFFFFFFFFFFFFFFFF, 0x0000000000000001}, // MaxUFix64 + 0.00000001 = overflow
+	{0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF}, // MaxUFix64 + MaxUFix64 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x8000000005F5E0FF}, // HalfMaxUFix64 + HalfMaxUFix64 + 1.0 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x800000000098967F}, // HalfMaxUFix64 + HalfMaxUFix64 + 0.1 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x80000000000F423F}, // HalfMaxUFix64 + HalfMaxUFix64 + 0.01 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x800000000001869F}, // HalfMaxUFix64 + HalfMaxUFix64 + 0.001 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x800000000000270F}, // HalfMaxUFix64 + HalfMaxUFix64 + 0.0001 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x80000000000003E7}, // HalfMaxUFix64 + HalfMaxUFix64 + 0.00001 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x8000000000000063}, // HalfMaxUFix64 + HalfMaxUFix64 + 0.000001 = overflow
+	{0x8000000000000000, 0x8000000000000000}, // HalfMaxUFix64 + 0.00000001 + HalfMaxUFix64 + 0.00000001 = overflow
+	{0x8000000000000001, 0x7FFFFFFFFFFFFFFF}, // HalfMaxUFix64 + 0.00000002 + HalfMaxUFix64 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x8000000000000001}, // HalfMaxUFix64 + HalfMaxUFix64 + 0.00000002 = overflow
+}
+
+var AddFix64Tests = []struct{ A, B, Expected uint64 }{
+	{0x0000000005F5E100, 0x0000000005F5E100, 0x000000000BEBC200}, // 1.0 + 1.0 = 2.0
+	{0x0000000005F5E100, 0x0000000000000000, 0x0000000005F5E100}, // 1.0 + 0.0 = 1.0
+	{0x0000000000000000, 0x0000000000000000, 0x0000000000000000}, // 0.0 + 0.0 = 0.0
+	{0x0000000000000000, 0x0000000005F5E100, 0x0000000005F5E100}, // 0.0 + 1.0 = 1.0
+	{0x0000000005F5E100, 0x000000000BEBC200, 0x0000000011E1A300}, // 1.0 + 2.0 = 3.0
+	{0xFFFFFFFFFA0A1F00, 0x000000000BEBC200, 0x0000000005F5E100}, // -1.0 + 2.0 = 1.0
+	{0x0000000005F5E100, 0xFFFFFFFFF4143E00, 0xFFFFFFFFFA0A1F00}, // 1.0 + -2.0 = -1.0
+	{0xFFFFFFFFFA0A1F00, 0xFFFFFFFFF4143E00, 0xFFFFFFFFEE1E5D00}, // -1.0 + -2.0 = -3.0
+	{0x0000000005F5E100, 0x002386F26FC10000, 0x002386F275B6E100}, // 1.0 + 1e8 = 100000001.0
+	{0x0000000005F5E100, 0x002386F275B6E100, 0x002386F27BACC200}, // 1.0 + 100000001.0 = 100000002.0
+	{0x0000000005F5E100, 0x002386F269CB1F00, 0x002386F26FC10000}, // 1.0 + 99999999.0 = 100000000.0
+	{0x00000002DFDAE800, 0x000000125EE0C480, 0x000000153EBBAC80}, // 123.456 + 789.012 = 912.468
+	{0xFFFFFFF55D534CE0, 0x00000002DFDAE800, 0xFFFFFFF83D2E34E0}, // -456.789 + 123.456 = -333.333
+	{0x000000000000300C, 0x000000000000B220, 0x000000000000E22C}, // 0.000123 + 0.000456 = 0.000579
+	{0xFFFFFFFFFFFECBCC, 0x0000000000007D64, 0xFFFFFFFFFFFF4930}, // -0.000789 + 0.000321 = -0.000468
+	{0x000008FB8FD98210, 0xFFFFFEE08E04FBB0, 0x000007DC1DDE7DC0}, // 98765.4321 + -12345.6789 = 86419.7532
+	{0x000002DB75839110, 0x00000278E638E760, 0x000005545BBC7870}, // 31415.9265 + 27182.8182 = 58598.7447
+	{0xFFFFFD8719C718A0, 0xFFFFFD248A7C6EF0, 0xFFFFFAABA4438790}, // -27182.8182 + -31415.9265 = -58598.7447
+	{0x00000000075BCD15, 0xFFFFFFFFFA1CF588, 0x000000000178C29D}, // 1.23456789 + -0.98765432 = 0.24691357
+	{0x0000000005F5E0FF, 0x0000000000000001, 0x0000000005F5E100}, // 0.99999999 + 0.00000001 = 1.00000000
+	{0xFFFFFFFFFA0A1F01, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFA0A1F00}, // -0.99999999 + -0.00000001 = -1.00000000
+	{0x7FFFFFFFFA0A1EFF, 0x0000000005F5E100, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 - 1.0 + 1.0 = 92233720368.54775807
+	{0x7FFFFFFFFF67697F, 0x0000000000989680, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 - 0.1 + 0.1 = 92233720368.54775807
+	{0x7FFFFFFFFFF0BDBF, 0x00000000000F4240, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 - 0.01 + 0.01 = 92233720368.54775807
+	{0x7FFFFFFFFFFE795F, 0x00000000000186A0, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 - 0.001 + 0.001 = 92233720368.54775807
+	{0x7FFFFFFFFFFFD8EF, 0x0000000000002710, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 - 0.0001 + 0.0001 = 92233720368.54775807
+	{0x7FFFFFFFFFFFFC17, 0x00000000000003E8, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 - 0.00001 + 0.00001 = 92233720368.54775807
+	{0x7FFFFFFFFFFFFF9B, 0x0000000000000064, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 - 0.000001 + 0.000001 = 92233720368.54775807
+	{0x7FFFFFFFFFFFFFF5, 0x000000000000000A, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 - 0.0000001 + 0.0000001 = 92233720368.54775807
+	{0x7FFFFFFFFFFFFFFE, 0x0000000000000001, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 - 0.00000001 + 0.00000001 = 92233720368.54775807
+	{0x3FFFFFFFFFFFFFFF, 0x3FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFE}, // HalfMaxFix64 + HalfMaxFix64 = 92233720368.54775806
+	{0x4000000000000000, 0x3FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF}, // HalfMaxFix64 + 0.00000001 + HalfMaxFix64 = 92233720368.54775807
+	{0x3FFFFFFFFFFFFFFF, 0x4000000000000000, 0x7FFFFFFFFFFFFFFF}, // HalfMaxFix64 + HalfMaxFix64 + 0.00000001 = 92233720368.54775807
+	{0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFA0A1F00, 0x7FFFFFFFFA0A1EFF}, // MaxFix64 + -1.0 = 92233720367.54775807
+	{0x7FFFFFFFFFFFFFFF, 0x0000000000000000, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 + 0.0 = 92233720368.54775807
+	{0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFF676980, 0x7FFFFFFFFF67697F}, // MaxFix64 + -0.1 = 92233720368.44775807
+	{0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFF0BDC0, 0x7FFFFFFFFFF0BDBF}, // MaxFix64 + -0.01 = 92233720368.53775807
+	{0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFE7960, 0x7FFFFFFFFFFE795F}, // MaxFix64 + -0.001 = 92233720368.54675807
+	{0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFD8F0, 0x7FFFFFFFFFFFD8EF}, // MaxFix64 + -0.0001 = 92233720368.54765807
+	{0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFC18, 0x7FFFFFFFFFFFFC17}, // MaxFix64 + -0.00001 = 92233720368.54774807
+	{0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFF9C, 0x7FFFFFFFFFFFFF9B}, // MaxFix64 + -0.000001 = 92233720368.54775707
+	{0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFF6, 0x7FFFFFFFFFFFFFF5}, // MaxFix64 + -0.0000001 = 92233720368.54775797
+	{0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFE}, // MaxFix64 + -0.00000001 = 92233720368.54775806
+	{0x3FFFFFFFFFFFFFFF, 0x3FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFE}, // HalfMaxFix64 + HalfMaxFix64 = 92233720368.54775806
+	{0x8000000005F5E100, 0xFFFFFFFFFA0A1F00, 0x8000000000000000}, // MinFix64 + 1.0 + -1.0 = -92233720368.54775808
+	{0x8000000000989680, 0xFFFFFFFFFF676980, 0x8000000000000000}, // MinFix64 + 0.1 + -0.1 = -92233720368.54775808
+	{0x80000000000F4240, 0xFFFFFFFFFFF0BDC0, 0x8000000000000000}, // MinFix64 + 0.01 + -0.01 = -92233720368.54775808
+	{0x80000000000186A0, 0xFFFFFFFFFFFE7960, 0x8000000000000000}, // MinFix64 + 0.001 + -0.001 = -92233720368.54775808
+	{0x8000000000002710, 0xFFFFFFFFFFFFD8F0, 0x8000000000000000}, // MinFix64 + 0.0001 + -0.0001 = -92233720368.54775808
+	{0x80000000000003E8, 0xFFFFFFFFFFFFFC18, 0x8000000000000000}, // MinFix64 + 0.00001 + -0.00001 = -92233720368.54775808
+	{0x8000000000000064, 0xFFFFFFFFFFFFFF9C, 0x8000000000000000}, // MinFix64 + 0.000001 + -0.000001 = -92233720368.54775808
+	{0x800000000000000A, 0xFFFFFFFFFFFFFFF6, 0x8000000000000000}, // MinFix64 + 0.0000001 + -0.0000001 = -92233720368.54775808
+	{0x8000000000000001, 0xFFFFFFFFFFFFFFFF, 0x8000000000000000}, // MinFix64 + 0.00000001 + -0.00000001 = -92233720368.54775808
+	{0x8000000000000000, 0x0000000005F5E100, 0x8000000005F5E100}, // MinFix64 + 1.0 = -92233720367.54775808
+	{0x8000000000000000, 0x0000000000989680, 0x8000000000989680}, // MinFix64 + 0.1 = -92233720368.44775808
+	{0x8000000000000000, 0x00000000000F4240, 0x80000000000F4240}, // MinFix64 + 0.01 = -92233720368.53775808
+	{0x8000000000000000, 0x00000000000186A0, 0x80000000000186A0}, // MinFix64 + 0.001 = -92233720368.54675808
+	{0x8000000000000000, 0x0000000000002710, 0x8000000000002710}, // MinFix64 + 0.0001 = -92233720368.54765808
+	{0x8000000000000000, 0x00000000000003E8, 0x80000000000003E8}, // MinFix64 + 0.00001 = -92233720368.54774808
+	{0x8000000000000000, 0x0000000000000064, 0x8000000000000064}, // MinFix64 + 0.000001 = -92233720368.54775708
+	{0x8000000000000000, 0x000000000000000A, 0x800000000000000A}, // MinFix64 + 0.0000001 = -92233720368.54775798
+	{0x8000000000000000, 0x0000000000000001, 0x8000000000000001}, // MinFix64 + 0.00000001 = -92233720368.54775807
+	{0x0000000000000000, 0x8000000000000000, 0x8000000000000000}, // 0 + MinFix64 = -92233720368.54775808
+	{0xFFFFFFFFFF676980, 0x8000000000989680, 0x8000000000000000}, // -0.1 + MinFix64 + 0.1 = -92233720368.54775808
+	{0xFFFFFFFFFFF0BDC0, 0x80000000000F4240, 0x8000000000000000}, // -0.01 + MinFix64 + 0.01 = -92233720368.54775808
+	{0xFFFFFFFFFFFE7960, 0x80000000000186A0, 0x8000000000000000}, // -0.001 + MinFix64 + 0.001 = -92233720368.54775808
+	{0xFFFFFFFFFFFFD8F0, 0x8000000000002710, 0x8000000000000000}, // -0.0001 + MinFix64 + 0.0001 = -92233720368.54775808
+	{0xFFFFFFFFFFFFFC18, 0x80000000000003E8, 0x8000000000000000}, // -0.00001 + MinFix64 + 0.00001 = -92233720368.54775808
+	{0xFFFFFFFFFFFFFF9C, 0x8000000000000064, 0x8000000000000000}, // -0.000001 + MinFix64 + 0.000001 = -92233720368.54775808
+	{0xFFFFFFFFFFFFFFF6, 0x800000000000000A, 0x8000000000000000}, // -0.0000001 + MinFix64 + 0.0000001 = -92233720368.54775808
+	{0xFFFFFFFFFFFFFFFF, 0x8000000000000001, 0x8000000000000000}, // -0.00000001 + MinFix64 + 0.00000001 = -92233720368.54775808
+	{0xC000000000000000, 0xC000000000000000, 0x8000000000000000}, // HalfMinFix64 + HalfMinFix64 = -92233720368.54775808
+	{0xC000000000000001, 0xBFFFFFFFFFFFFFFF, 0x8000000000000000}, // HalfMinFix64 + 0.00000001 + HalfMinFix64 - 0.00000001 = -92233720368.54775808
+}
+
+var AddFix64OverflowTests = []struct{ A, B uint64 }{
+	{0x7FFFFFFFFFFFFFFF, 0x0000000005F5E100}, // MaxFix64 + 1.0 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x0000000000989680}, // MaxFix64 + 0.1 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x00000000000F4240}, // MaxFix64 + 0.01 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x00000000000186A0}, // MaxFix64 + 0.001 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x0000000000002710}, // MaxFix64 + 0.0001 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x00000000000003E8}, // MaxFix64 + 0.00001 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x0000000000000064}, // MaxFix64 + 0.000001 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x000000000000000A}, // MaxFix64 + 0.0000001 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x0000000000000001}, // MaxFix64 + 0.00000001 = overflow
+	{0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF}, // MaxFix64 + MaxFix64 = overflow
+	{0x3FFFFFFFFFFFFFFF, 0x4000000005F5E0FF}, // HalfMaxFix64 + HalfMaxFix64 + 1.0 = overflow
+	{0x3FFFFFFFFFFFFFFF, 0x400000000098967F}, // HalfMaxFix64 + HalfMaxFix64 + 0.1 = overflow
+	{0x3FFFFFFFFFFFFFFF, 0x40000000000F423F}, // HalfMaxFix64 + HalfMaxFix64 + 0.01 = overflow
+	{0x3FFFFFFFFFFFFFFF, 0x400000000001869F}, // HalfMaxFix64 + HalfMaxFix64 + 0.001 = overflow
+	{0x3FFFFFFFFFFFFFFF, 0x400000000000270F}, // HalfMaxFix64 + HalfMaxFix64 + 0.0001 = overflow
+	{0x3FFFFFFFFFFFFFFF, 0x40000000000003E7}, // HalfMaxFix64 + HalfMaxFix64 + 0.00001 = overflow
+	{0x3FFFFFFFFFFFFFFF, 0x4000000000000063}, // HalfMaxFix64 + HalfMaxFix64 + 0.000001 = overflow
+	{0x3FFFFFFFFFFFFFFF, 0x4000000000000009}, // HalfMaxFix64 + HalfMaxFix64 + 0.0000001 = overflow
+	{0x4000000000000000, 0x4000000000000000}, // HalfMaxFix64 + 0.00000001 + HalfMaxFix64 + 0.00000001 = overflow
+}
+
+var AddFix64NegOverflowTests = []struct{ A, B uint64 }{
+	{0x8000000000000000, 0xFFFFFFFFFA0A1F00}, // MinFix64 + -1.0 = neg overflow
+	{0x8000000000000000, 0xFFFFFFFFFF676980}, // MinFix64 + -0.1 = neg overflow
+	{0x8000000000000000, 0xFFFFFFFFFFF0BDC0}, // MinFix64 + -0.01 = neg overflow
+	{0x8000000000000000, 0xFFFFFFFFFFFE7960}, // MinFix64 + -0.001 = neg overflow
+	{0x8000000000000000, 0xFFFFFFFFFFFFD8F0}, // MinFix64 + -0.0001 = neg overflow
+	{0x8000000000000000, 0xFFFFFFFFFFFFFC18}, // MinFix64 + -0.00001 = neg overflow
+	{0x8000000000000000, 0xFFFFFFFFFFFFFF9C}, // MinFix64 + -0.000001 = neg overflow
+	{0x8000000000000000, 0xFFFFFFFFFFFFFFF6}, // MinFix64 + -0.0000001 = neg overflow
+	{0x8000000000000000, 0xFFFFFFFFFFFFFFFF}, // MinFix64 + -0.00000001 = neg overflow
+	{0x8000000000000000, 0x8000000000000000}, // MinFix64 + MinFix64 = neg overflow
+	{0xC000000000000000, 0xBFFFFFFFFA0A1F00}, // HalfMinFix64 + HalfMinFix64 - 1.0 = neg overflow
+	{0xC000000000000000, 0xBFFFFFFFFF676980}, // HalfMinFix64 + HalfMinFix64 - 0.1 = neg overflow
+	{0xC000000000000000, 0xBFFFFFFFFFF0BDC0}, // HalfMinFix64 + HalfMinFix64 - 0.01 = neg overflow
+	{0xC000000000000000, 0xBFFFFFFFFFFE7960}, // HalfMinFix64 + HalfMinFix64 - 0.001 = neg overflow
+	{0xC000000000000000, 0xBFFFFFFFFFFFD8F0}, // HalfMinFix64 + HalfMinFix64 - 0.0001 = neg overflow
+	{0xC000000000000000, 0xBFFFFFFFFFFFFC18}, // HalfMinFix64 + HalfMinFix64 - 0.00001 = neg overflow
+	{0xC000000000000000, 0xBFFFFFFFFFFFFF9C}, // HalfMinFix64 + HalfMinFix64 - 0.000001 = neg overflow
+	{0xC000000000000000, 0xBFFFFFFFFFFFFFF6}, // HalfMinFix64 + HalfMinFix64 - 0.0000001 = neg overflow
+}
+
+var (
+	SubUFix64Tests = []struct{ A, B *decimal.Big }{
+		// Simple cases
+		{decf(1.0), decf(1.0)},
+		{decf(1.0), decf(0.0)},
+		{decf(0.0), decf(0.0)},
+		{decf(1.0), decf(0.99999999)},
+		{decf(1e8), decf(1e8)},
+		{decf(1e8), decf(1e8 - 1.0)},
+
+		// Random cases
+		{decf(456.789), decf(123.456)},
+		{decf(0.000456), decf(0.000123)},
+		{decf(0.000789), decf(0.000321)},
+		{decf(98765.4321), decf(12345.6789)},
+		{decf(31415.9265), decf(27182.8182)},
+		{decf(1.23456789), decf(0.98765432)},
+		{decf(0.99999999), decf(0.00000001)},
+
+		// Edge cases (upper limit)
+		{MaxUFix64, decf(1.0)},
+		{MaxUFix64, decf(0.1)},
+		{MaxUFix64, decf(0.01)},
+		{MaxUFix64, decf(0.001)},
+		{MaxUFix64, decf(0.0001)},
+		{MaxUFix64, decf(0.00001)},
+		{MaxUFix64, decf(0.000001)},
+		{MaxUFix64, decf(0.0000001)},
+		{MaxUFix64, decf(0.00000001)},
+		{MaxUFix64, decf(0.0)},
+		{MaxUFix64, HalfMaxUFix64},
+		{HalfMaxUFix64, HalfMaxUFix64},
+		{sum(HalfMaxUFix64, 0.00000001), HalfMaxUFix64},
+		{HalfMaxUFix64, sum(HalfMaxUFix64, -0.00000001)},
+
+		// Edge cases (lower limit)
+		{decf(1.0), decf(1.0)},
+		{decf(1.0), decf(0.1)},
+		{decf(1.0), decf(0.01)},
+		{decf(1.0), decf(0.001)},
+		{decf(1.0), decf(0.0001)},
+		{decf(1.0), decf(0.00001)},
+		{decf(1.0), decf(0.000001)},
+		{decf(1.0), decf(0.0000001)},
+		{decf(1.0), decf(0.00000001)},
+
+		{decf(1.00000001), decf(1.0)},
+		{decf(1.00000001), decf(0.1)},
+		{decf(1.00000001), decf(0.01)},
+		{decf(1.00000001), decf(0.001)},
+		{decf(1.00000001), decf(0.0001)},
+		{decf(1.00000001), decf(0.00001)},
+		{decf(1.00000001), decf(0.000001)},
+		{decf(1.00000001), decf(0.0000001)},
+		{decf(1.00000001), decf(0.00000001)},
+
+		{decf(0.1), decf(0.1)},
+		{decf(0.01), decf(0.01)},
+		{decf(0.001), decf(0.001)},
+		{decf(0.0001), decf(0.0001)},
+		{decf(0.00001), decf(0.00001)},
+		{decf(0.000001), decf(0.000001)},
+		{decf(0.0000001), decf(0.0000001)},
+		{decf(0.00000001), decf(0.00000001)},
+	}
+
+	SubUFix64NegOverflowTests = []struct{ A, B *decimal.Big }{
+		{deci(5), deci(7)},
+
+		{deci(0), decf(1.0)},
+		{deci(0), decf(0.1)},
+		{deci(0), decf(0.01)},
+		{deci(0), decf(0.001)},
+		{deci(0), decf(0.0001)},
+		{deci(0), decf(0.00001)},
+		{deci(0), decf(0.000001)},
+		{deci(0), decf(0.0000001)},
+		{deci(0), decf(0.00000001)},
+
+		{deci(100), sum(deci(100), 0.1)},
+		{deci(100), sum(deci(100), 0.01)},
+		{deci(100), sum(deci(100), 0.001)},
+		{deci(100), sum(deci(100), 0.0001)},
+		{deci(100), sum(deci(100), 0.00001)},
+		{deci(100), sum(deci(100), 0.000001)},
+		{deci(100), sum(deci(100), 0.0000001)},
+		{deci(100), sum(deci(100), 0.00000001)},
+
+		{sum(MaxUFix64, -1.0), MaxUFix64},
+		{sum(MaxUFix64, -0.1), MaxUFix64},
+		{sum(MaxUFix64, -0.01), MaxUFix64},
+		{sum(MaxUFix64, -0.001), MaxUFix64},
+		{sum(MaxUFix64, -0.0001), MaxUFix64},
+		{sum(MaxUFix64, -0.00001), MaxUFix64},
+		{sum(MaxUFix64, -0.000001), MaxUFix64},
+		{sum(MaxUFix64, -0.0000001), MaxUFix64},
+		{sum(MaxUFix64, -0.00000001), MaxUFix64},
+	}
+
+	SubFix64Tests = []struct{ A, B *decimal.Big }{
+		// Simple cases
+		{decf(1.0), decf(1.0)},
+		{decf(1.0), decf(0.0)},
+		{decf(0.0), decf(0.0)},
+		{decf(0.0), decf(1.0)},
+		{decf(1.0), decf(2.0)},
+		{decf(-1.0), decf(2.0)},
+		{decf(1.0), decf(-2.0)},
+		{decf(-1.0), decf(-2.0)},
+		{decf(1.0), decf(1e8)},
+		{decf(1.0), decf(1e8 + 1.0)},
+		{decf(1.0), decf(1e8 - 1.0)},
+
+		// Random cases
+		{decf(123.456), decf(789.012)},
+		{decf(-456.789), decf(123.456)},
+		{decf(0.000123), decf(0.000456)},
+		{decf(-0.000789), decf(0.000321)},
+		{decf(98765.4321), decf(-12345.6789)},
+		{decf(31415.9265), decf(27182.8182)},
+		{decf(-27182.8182), decf(-31415.9265)},
+		{decf(1.23456789), decf(-0.98765432)},
+		{decf(0.99999999), decf(0.00000001)},
+		{decf(-0.99999999), decf(-0.00000001)},
+
+		// Edge cases (upper limit)
+		{sum(MaxFix64, -1.0), decf(-1.0)},
+		{sum(MaxFix64, -0.1), decf(-0.1)},
+		{sum(MaxFix64, -0.01), decf(-0.01)},
+		{sum(MaxFix64, -0.001), decf(-0.001)},
+		{sum(MaxFix64, -0.0001), decf(-0.0001)},
+		{sum(MaxFix64, -0.00001), decf(-0.00001)},
+		{sum(MaxFix64, -0.000001), decf(-0.000001)},
+		{sum(MaxFix64, -0.0000001), decf(-0.0000001)},
+		{sum(MaxFix64, -0.00000001), decf(-0.00000001)},
+		{HalfMaxFix64, HalfMinFix64},
+		{HalfMaxFix64, sum(HalfMinFix64, 0.00000001)},
+
+		{MaxFix64, decf(1.0)},
+		{MaxFix64, decf(0.0)},
+		{MaxFix64, decf(0.1)},
+		{MaxFix64, decf(0.01)},
+		{MaxFix64, decf(0.001)},
+		{MaxFix64, decf(0.0001)},
+		{MaxFix64, decf(0.00001)},
+		{MaxFix64, decf(0.000001)},
+		{MaxFix64, decf(0.0000001)},
+		{MaxFix64, decf(0.00000001)},
+
+		// Edge cases (lower limit)
+		{sum(MinFix64, 1.0), decf(1.0)},
+		{sum(MinFix64, 0.1), decf(0.1)},
+		{sum(MinFix64, 0.01), decf(0.01)},
+		{sum(MinFix64, 0.001), decf(0.001)},
+		{sum(MinFix64, 0.0001), decf(0.0001)},
+		{sum(MinFix64, 0.00001), decf(0.00001)},
+		{sum(MinFix64, 0.000001), decf(0.000001)},
+		{sum(MinFix64, 0.0000001), decf(0.0000001)},
+		{sum(MinFix64, 0.00000001), decf(0.00000001)},
+
+		{decf(0.0), MaxFix64},
+		{decf(-0.1), sum(MaxFix64, -0.1)},
+		{decf(-0.01), sum(MaxFix64, -0.01)},
+		{decf(-0.001), sum(MaxFix64, -0.001)},
+		{decf(-0.0001), sum(MaxFix64, -0.0001)},
+		{decf(-0.00001), sum(MaxFix64, -0.00001)},
+		{decf(-0.000001), sum(MaxFix64, -0.000001)},
+		{decf(-0.0000001), sum(MaxFix64, -0.0000001)},
+		{decf(-0.00000001), sum(MaxFix64, -0.00000001)},
+
+		{decf(-1.0), MaxFix64},
+		{decf(-0.1), MaxFix64},
+		{decf(-0.01), MaxFix64},
+		{decf(-0.001), MaxFix64},
+		{decf(-0.0001), MaxFix64},
+		{decf(-0.00001), MaxFix64},
+		{decf(-0.000001), MaxFix64},
+		{decf(-0.0000001), MaxFix64},
+		{decf(-0.00000001), MaxFix64},
+
+		{sum(HalfMinFix64, -0.00000001), HalfMaxFix64},
+		{HalfMinFix64, sum(HalfMaxFix64, 0.00000001)},
+
+		{HalfMinFix64, HalfMaxFix64},
+		{sum(HalfMaxFix64, 0.00000001), sum(HalfMinFix64, 0.00000001)},
+		{sum(HalfMinFix64, 0.00000001), sum(HalfMaxFix64, -0.00000001)},
+	}
+
+	// {sum(HalfMaxFix64, 0.00000001), HalfMinFix64}, // NEG OVERFLOW
+
+	SubFix64OverflowTests = []struct{ A, B *decimal.Big }{
+		{MaxFix64, decf(-1.0)},
+		{MaxFix64, decf(-0.01)},
+		{MaxFix64, decf(-0.001)},
+		{MaxFix64, decf(-0.00001)},
+		{MaxFix64, decf(-0.0000001)},
+		{MaxFix64, decf(-0.00000001)},
+		{MaxFix64, MinFix64},
+		{sum(HalfMaxFix64, 1.0), HalfMinFix64},
+		{sum(HalfMaxFix64, 0.1), HalfMinFix64},
+		{sum(HalfMaxFix64, 0.01), HalfMinFix64},
+		{sum(HalfMaxFix64, 0.001), HalfMinFix64},
+		{sum(HalfMaxFix64, 0.0001), HalfMinFix64},
+		{sum(HalfMaxFix64, 0.00001), HalfMinFix64},
+		{sum(HalfMaxFix64, 0.000001), HalfMinFix64},
+		{sum(HalfMaxFix64, 0.0000001), HalfMinFix64},
+	}
+
+	SubFix64NegOverflowTests = []struct{ A, B *decimal.Big }{
+		{decf(-2.0), MaxFix64},
+		{decf(-1.1), MaxFix64},
+		{decf(-1.01), MaxFix64},
+		{decf(-1.001), MaxFix64},
+		{decf(-1.0001), MaxFix64},
+		{decf(-1.00001), MaxFix64},
+		{decf(-1.000001), MaxFix64},
+		{decf(-1.0000001), MaxFix64},
+		{decf(-1.00000001), MaxFix64},
+		{MinFix64, decf(1.0)},
+		{MinFix64, decf(0.1)},
+		{MinFix64, decf(0.01)},
+		{MinFix64, decf(0.001)},
+		{MinFix64, decf(0.0001)},
+		{MinFix64, decf(0.00001)},
+		{MinFix64, decf(0.000001)},
+		{MinFix64, decf(0.0000001)},
+		{MinFix64, decf(0.00000001)},
+		{MinFix64, MaxFix64},
+		{sum(HalfMinFix64, -0.00000001), sum(HalfMaxFix64, 0.00000001)},
+	}
+
+	MulUFix64Tests = []struct{ A, B *decimal.Big }{
+		{decf(1.0), decf(1.0)},
+		{decf(1.0), decf(0.0)},
+		{decf(0.0), decf(0.0)},
+		{decf(1.0), decf(1e8)},
+		{decf(1.0), decf(1e8 + 1.0)},
+
+		// The prime factors of UINT64_MAX are 3, 5, 17, 257, 641, 65537, and 6700417
+		{scale(decu(3 * 5 * 17 * 257 * 641 * 65537)), decu(6700417)},
+		{decu(3 * 5 * 17 * 257 * 641), scale(decu(65537 * 6700417))},
+		{decu(3 * 5 * 17 * 257), scale(decu(641 * 65537 * 6700417))},
+		{decu(3 * 5 * 17), scale(decu(257 * 641 * 65537 * 6700417))},
+		{decu(3 * 5), scale(decu(17 * 257 * 641 * 65537 * 6700417))},
+		{decu(3), scale(decu(5 * 17 * 257 * 641 * 65537 * 6700417))},
+
+		// SLIGHTLY LESS than the square root of 2^64
+		{decf(429496.7295), decf(429496.7295)},
+		{decf(429496.72959999), decf(429496.72959999)},
+
+		{MaxUFix64, decf(1.0)},
+		{MaxUFix64, decf(0.1)},
+		{MaxUFix64, decf(0.01)},
+		{MaxUFix64, decf(0.001)},
+		{MaxUFix64, decf(0.0001)},
+		{MaxUFix64, decf(0.00001)},
+		{MaxUFix64, decf(0.000001)},
+		{MaxUFix64, decf(0.0000001)},
+		{MaxUFix64, decf(0.00000001)},
+		{MaxUFix64, decf(0.0)},
+		{sum(MaxUFix64, -1.0), decf(1.0)},
+		{HalfMaxUFix64, decf(2.0)},
+
+		// Things that multiply to the smallest UFix64
+		{decf(0.1), decf(0.0000001)},
+		{decf(0.01), decf(0.000001)},
+		{decf(0.001), decf(0.00001)},
+		{decf(0.0001), decf(0.0001)},
+		{decf(0.00001), decf(0.001)},
+		{decf(0.000001), decf(0.01)},
+		{decf(0.0000001), decf(0.1)},
+
+		{decf(0.00000005), decf(0.2)},
+		{decf(0.00000002), decf(0.5)},
+	}
+
+	MulUFix64OverflowTests = []struct{ A, B *decimal.Big }{
+		{MaxUFix64, decf(1.1)},
+		{MaxUFix64, decf(1.01)},
+		{MaxUFix64, decf(1.001)},
+		{MaxUFix64, decf(1.00001)},
+		{MaxUFix64, decf(1.0000001)},
+		{MaxUFix64, MaxUFix64},
+		{HalfMaxFix64, HalfMaxFix64},
+
+		// Square root of 2^64
+		{decf(429496.7296), decf(429496.7296)},
+
+		{sum(scale(decf(3*5*17*257*641*65537)), 0.00000001), decu(6700417)},
+		{sum(decf(3*5*17*257*641), 0.00000001), scale(decu(65537 * 6700417))},
+		{sum(decf(3*5*17*257), 0.00000001), scale(decu(641 * 65537 * 6700417))},
+		{sum(decf(3*5*17), 0.00000001), scale(decu(257 * 641 * 65537 * 6700417))},
+		{sum(decf(3*5), 0.00000001), scale(decu(17 * 257 * 641 * 65537 * 6700417))},
+		{sum(decf(3), 0.00000001), scale(decu(5 * 17 * 257 * 641 * 65537 * 6700417))},
+	}
+
+	MulUFix64UnderflowTests = []struct{ A, B *decimal.Big }{
+		{decf(0.00000001), decf(0.0000001)},
+		{decf(0.0000001), decf(0.00000001)},
+		{decf(0.000001), decf(0.000001)},
+
+		{decf(0.01), decf(0.0000001)},
+		{decf(0.001), decf(0.000001)},
+		{decf(0.0001), decf(0.00001)},
+		{decf(0.00001), decf(0.0001)},
+		{decf(0.000001), decf(0.001)},
+		{decf(0.0000001), decf(0.01)},
+		{decf(0.0000001), decf(0.01)},
+
+		{decf(0.99999999), decf(0.00000001)},
+		{decf(0.09999999), decf(0.0000001)},
+		{decf(0.00999999), decf(0.000001)},
+		{decf(0.00099999), decf(0.00001)},
+		{decf(0.00009999), decf(0.0001)},
+		{decf(0.00000999), decf(0.001)},
+		{decf(0.00000099), decf(0.01)},
+		{decf(0.00000009), decf(0.1)},
+
+		{decf(0.00000005), decf(0.19999999)},
+		{decf(0.00000002), decf(0.49999999)},
+	}
+
+	DivUFix64Tests = []struct{ A, B *decimal.Big }{
+		{decf(1.0), decf(1.0)},
+		{decu(1.0), decu(1e8)},
+		{decf(10.0), decf(1e8 + 1.0)},
+		{decf(1e8), decf(1e8)},
+		{decf(1e8), decf(1e8 - 1.0)},
+		{decf(1e8), decf(1e8 + 1.0)},
+		{decu(5), decu(1)},
+		{decu(5), decu(2)},
+		{decu(5), decu(3)},
+		{decu(5), decu(4)},
+		{decu(5), decu(5)},
+		{decu(5), decu(6)},
+		{decu(5), decu(7)},
+		{decu(5), decu(8)},
+		{decu(5), decu(9)},
+		{decu(5), decu(10)},
+
+		// The prime factors of UINT64_MAX are 3, 5, 17, 257, 641, 65537, and 6700417
+		{MaxUFix64, scale(decf(3 * 5 * 17 * 257 * 641 * 65537))},
+		{MaxUFix64, decf(3 * 5 * 17 * 257 * 641)},
+		{MaxUFix64, decf(3 * 5 * 17 * 257)},
+		{MaxUFix64, decf(3 * 5 * 17)},
+		{MaxUFix64, decf(3 * 5)},
+		{MaxUFix64, decf(3)},
+
+		// Near the square root of 2^64
+		{MaxUFix64, decf(429496.7296)},
+		{MaxUFix64, decf(429496.7295)},
+		{MaxUFix64, decf(429496.72959999)},
+
+		{MaxUFix64, decu(1)},
+		{MaxUFix64, decu(10)},
+		{MaxUFix64, decu(100)},
+		{MaxUFix64, decu(1000)},
+		{MaxUFix64, decu(10000)},
+		{MaxUFix64, decu(100000)},
+		{MaxUFix64, decu(1000000)},
+		{MaxUFix64, decu(10000000)},
+		{MaxUFix64, decu(100000000)},
+		{MaxUFix64, decu(1000000000)},
+		{MaxUFix64, decu(10000000000)},
+		{MaxUFix64, decu(100000000000)},
+
+		{sum(MaxUFix64, -1.0), decf(1.0)},
+		{HalfMaxUFix64, decf(0.5)},
+
+		// Things that divide to the smallest UFix64
+		{decf(0.00000001), decu(1)},
+		{decf(0.0000001), decu(10)},
+		{decf(0.000001), decu(100)},
+		{decf(0.00001), decu(1000)},
+		{decf(0.0001), decu(10000)},
+		{decf(0.001), decu(100000)},
+		{decf(0.01), decu(1000000)},
+		{decf(0.1), decu(10000000)},
+		{decf(1.0), decu(100000000)},
+
+		{decf(0.00000001), decf(0.99999999)},
+		{decf(0.0000001), decf(9.99999999)},
+		{decf(0.000001), decf(99.99999999)},
+		{decf(0.00001), decf(999.99999999)},
+		{decf(0.0001), decf(9999.99999999)},
+		{decf(0.001), decf(99999.99999999)},
+		{decf(0.01), decf(999999.99999999)},
+		{decf(0.1), decf(9999999.99999999)},
+		{decf(1.0), decf(99999999.99999999)},
+
+		{scale(decu(18446744073709551615)), decf(1.0)},
+		{scale(decu(1844674407370955161)), decf(0.1)},
+		{scale(decu(184467440737095516)), decf(0.01)},
+		{scale(decu(18446744073709551)), decf(0.001)},
+		{scale(decu(1844674407370955)), decf(0.0001)},
+		{scale(decu(184467440737095)), decf(0.00001)},
+		{scale(decu(18446744073709)), decf(0.000001)},
+		{scale(decu(1844674407370)), decf(0.0000001)},
+		{scale(decu(184467440737)), decf(0.00000001)},
+
+		{decf(0.00000005), decu(5)},
+		{decf(0.00000002), decu(2)},
+	}
+
+	DivUFix64OverflowTests = []struct{ A, B *decimal.Big }{
+		{MaxUFix64, decf(0.99999999)},
+		{MaxUFix64, decf(0.01)},
+		{MaxUFix64, decf(0.001)},
+		{MaxUFix64, decf(0.00001)},
+		{MaxUFix64, decf(0.0000001)},
+
+		{scale(decu(18446744073709551615)), decf(0.99999999)},
+		{scale(decu(1844674407370955161)), decf(0.09999999)},
+		{scale(decu(184467440737095516)), decf(0.00999999)},
+		{scale(decu(18446744073709551)), decf(0.00099999)},
+		{scale(decu(1844674407370955)), decf(0.00009999)},
+		{scale(decu(184467440737095)), decf(0.00000999)},
+		{scale(decu(18446744073709)), decf(0.00000099)},
+		{scale(decu(1844674407370)), decf(0.00000009)},
+	}
+
+	DivUFix64UnderflowTests = []struct{ A, B *decimal.Big }{
+		{decf(0.1), decu(100000000)},
+		{decf(0.01), decu(10000000)},
+		{decf(0.001), decu(1000000)},
+		{decf(0.0001), decu(100000)},
+		{decf(0.00001), decu(10000)},
+		{decf(0.000001), decu(1000)},
+		{decf(0.0000001), decu(100)},
+		{decf(0.00000001), decu(10)},
+
+		{decf(0.00000002), decu(3)},
+		{decf(0.00000002), decf(2.1)},
+		{decf(0.00000002), decf(2.01)},
+		{decf(0.00000002), decf(2.001)},
+		{decf(0.00000002), decf(2.0001)},
+		{decf(0.00000002), decf(2.00001)},
+		{decf(0.00000002), decf(2.000001)},
+		{decf(0.00000002), decf(2.0000001)},
+		{decf(0.00000002), decf(2.00000001)},
+	}
+
+	FMDUFix64Tests = []struct{ A, B, C *decimal.Big }{
+		{decf(1.0), decf(1.0), decf(1.0)},
+		{decf(1.0), decf(0.0), decf(1.0)},
+		{decf(0.0), decf(1.0), decf(2.0)},
+		{decf(1.0), decf(1e8), decf(1e8)},
+		{decf(1.0), decf(1e8 + 1.0), decf(1e8)},
+		{MaxUFix64, decf(1.0), decf(1.0)},
+	}
+
+	FMDUFix64OverflowTests = []struct{ A, B, C *decimal.Big }{
+		{MaxUFix64, decf(1.1), decf(1.0)},
+	}
+	SqrtUFix64Tests = []*decimal.Big{
+		decf(1.0), decf(2.0), decf(3.0), decf(4.0), decf(5.0), decf(6.0), decf(7.0), decf(8.0), decf(9.0),
+		decf(10.0), decf(16.0), decf(25.0), decf(49.0), decf(64.0), decf(81.0), decf(100.0), decf(1000.0),
+		decf(10000.0), decf(100000.0), decf(1000000.0), decf(10000000.0), decf(100000000.0), decf(1000000000.0),
+		MaxUFix64, decf(0.0), decf(0.1), decf(0.01), decf(0.001), decf(0.0001), decf(0.00001), decf(0.000001),
+		decf(0.00000001),
+	}
+	LnTests = []*decimal.Big{
+		decf(2.7182818), decf(1.0), decf(1.1), decf(1.01), decf(1.001), decf(1.0001), decf(1.00001),
+		decf(0.1), decf(0.01), decf(0.001), decf(0.0001), decf(0.00001), decf(0.000001), decf(0.0000001),
+		decf(0.00000001), decf(0.9), decf(0.99), decf(0.999), decf(0.9999), decf(0.99999), decf(0.5),
+		decf(10.0), decf(20.0), decf(50.0), decf(100.0), decf(500.0), decf(1000.0), decf(5000.0),
+		decf(10000.0), decf(3.1415927), decf(7.3890561), decf(15.0), decf(25.0), decf(75.0), decf(250.0),
+		decf(750.0), decf(2500.0), decf(7500.0), decf(100000.0), decf(1000000.0), decf(10000000.0),
+		decf(100000000.0), decf(1000000000.0), MaxUFix64,
+	}
+	ExpTests = []*decimal.Big{
+		decf(0.0), decf(1.0), decf(2.0), decf(5.0), decf(7.9), decf(7.99), decf(8.0), decf(8.01),
+		decf(8.1), decf(10.0), decf(15.0), decf(15.9), decf(15.99), decf(16.0), decf(16.01),
+		decf(16.1), decf(17.0), decf(20.0), decf(25.0), decf(25.2), decf(-1.0), decf(-2.0),
+		decf(-5.0), decf(-6.0), decf(-7.0), decf(-8.0), decf(-9.0), decf(-10.0), decf(-11.0),
+		decf(-12.0), decf(-13.0), decf(-14.0), decf(-15.0), decf(-15.1), decf(-15.2), decf(-15.3),
+		decf(-15.4), decf(-15.5), decf(-15.6), decf(-15.7), decf(-15.8), decf(-15.9), decf(-16.0), decf(-17.0), decf(-18.0),
+	}
+	PowTests = []struct{ A, B *decimal.Big }{
+		{decf(2.0), decf(3.0)}, {decf(9.0), decf(0.5)}, {decf(27.0), decf(1.0 / 3.0)},
+		{decf(5.0), decf(0.0)}, {decf(0.0), decf(5.0)},
+	}
+	SinTests = []*decimal.Big{
+		decf(0.0), decf(0.1), decf(0.01), decf(0.001), decf(0.0001), decf(0.00001), decf(0.000001),
+		decf(0.0000001), decf(0.00000001), decf(0.00391486), decf(0.00391486 + 1e-8), decf(0.00391486 - 1e-8),
+		decf(0.2), decf(0.28761102), decf(0.3), decf(0.4), decf(0.5), decf(0.6), decf(0.7), decf(0.8),
+		decf(0.9), decf(1.0), decf(2.0), decf(3.0), decf(4.0), decf(5.0), decf(6.0), decf(7.0),
+		decf(2 - math.Pi/2), decf(2 + 3*math.Pi/2), decf(math.Pi / 2), decf(math.Pi), decf(3 * math.Pi / 2),
+		decf(2 * math.Pi), decf(-math.Pi / 2), decf(-math.Pi), decf(-3 * math.Pi / 2), decf(-2 * math.Pi),
+	}
+	CosTests = []*decimal.Big{
+		decf(0.0), decf(0.1), decf(0.01), decf(0.001), decf(0.0001), decf(0.00001), decf(0.000001),
+		decf(0.0000001), decf(0.00000001), decf(0.2), decf(0.28761102), decf(0.3), decf(0.4), decf(0.5),
+		decf(0.6), decf(0.7), decf(0.8), decf(0.9), decf(1.0), decf(2.0), decf(3.0), decf(4.0), decf(5.0),
+		decf(6.0), decf(7.0), decf(math.Pi / 2), decf(math.Pi), decf(3 * math.Pi / 2), decf(2 * math.Pi),
+		decf(-math.Pi / 2), decf(-math.Pi), decf(-3 * math.Pi / 2), decf(-2 * math.Pi),
+	}
+	TanTests = []*decimal.Big{
+		decf(0.0), decf(0.1), decf(0.01), decf(0.001), decf(0.0001), decf(0.00001), decf(0.000001),
+		decf(0.0000001), decf(0.00000001), decf(0.2), decf(0.28761102), decf(0.3), decf(0.4), decf(0.5),
+		decf(0.6), decf(0.7), decf(0.8), decf(0.9), decf(1.0), decf(2.0), decf(3.0), decf(4.0), decf(5.0),
+		decf(6.0), decf(7.0), decf(math.Pi / 4), decf(math.Pi / 3), decf(math.Pi), decf(2 * math.Pi),
+		decf(-math.Pi / 4), decf(-math.Pi), decf(-2 * math.Pi),
+	}
+)
