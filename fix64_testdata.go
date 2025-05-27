@@ -1,4 +1,4 @@
-package fix64
+package fixedPoint
 
 import (
 	"math"
@@ -10,23 +10,32 @@ import (
 
 // decf is a helper to create *decimal.Big from float64
 func decf(f float64) *decimal.Big {
-	return decimal.WithPrecision(30).SetFloat64(f)
+
+	// Take "one step" away from zero to avoid issues with rounding down
+	// when we convert decimal.Big to fixed point types.
+	if f < 0.0 {
+		f = math.Nextafter(f, math.Inf(-1))
+	} else {
+		f = math.Nextafter(f, math.Inf(1))
+	}
+
+	return decimal.WithPrecision(60).SetFloat64(f)
 }
 
 func decu(i uint64) *decimal.Big {
-	return decimal.WithPrecision(30).SetUint64(i)
+	return decimal.WithPrecision(60).SetUint64(i)
 }
 
 func deci(i int64) *decimal.Big {
-	return decimal.WithPrecision(30).SetMantScale(i, 0)
+	return decimal.WithPrecision(60).SetMantScale(i, 0)
 }
 
 func sum(a *decimal.Big, b float64) *decimal.Big {
-	return decimal.WithPrecision(30).Add(a, decf(b))
+	return decimal.WithPrecision(60).Add(a, decf(b))
 }
 
 func scale(a *decimal.Big) *decimal.Big {
-	return decimal.WithPrecision(30).Quo(a, decf(1e8))
+	return decimal.WithPrecision(60).Quo(a, decf(1e8))
 }
 
 var MaxUFix64 = decimal.WithPrecision(30).Quo(decu(math.MaxUint64), decu(1e8))
@@ -451,12 +460,12 @@ var (
 		{decf(1.0), decf(1e8 + 1.0)},
 
 		// The prime factors of UINT64_MAX are 3, 5, 17, 257, 641, 65537, and 6700417
-		{scale(decf(3 * 5 * 17 * 257 * 641 * 65537)), decu(6700417)},
-		{decf(3 * 5 * 17 * 257 * 641), scale(decu(65537 * 6700417))},
-		{decf(3 * 5 * 17 * 257), scale(decu(641 * 65537 * 6700417))},
-		{decf(3 * 5 * 17), scale(decu(257 * 641 * 65537 * 6700417))},
-		{decf(3 * 5), scale(decu(17 * 257 * 641 * 65537 * 6700417))},
-		{decf(3), scale(decu(5 * 17 * 257 * 641 * 65537 * 6700417))},
+		{scale(decu(3 * 5 * 17 * 257 * 641 * 65537)), decu(6700417)},
+		{decu(3 * 5 * 17 * 257 * 641), scale(decu(65537 * 6700417))},
+		{decu(3 * 5 * 17 * 257), scale(decu(641 * 65537 * 6700417))},
+		{decu(3 * 5 * 17), scale(decu(257 * 641 * 65537 * 6700417))},
+		{decu(3 * 5), scale(decu(17 * 257 * 641 * 65537 * 6700417))},
+		{decu(3), scale(decu(5 * 17 * 257 * 641 * 65537 * 6700417))},
 
 		// SLIGHTLY LESS than the square root of 2^64
 		{decf(429496.7295), decf(429496.7295)},
@@ -536,7 +545,7 @@ var (
 
 	DivUFix64Tests = []struct{ A, B *decimal.Big }{
 		{decf(1.0), decf(1.0)},
-		{decf(1.0), decf(1e8)},
+		{decu(1.0), decu(1e8)},
 		{decf(10.0), decf(1e8 + 1.0)},
 		{decf(1e8), decf(1e8)},
 		{decf(1e8), decf(1e8 - 1.0)},

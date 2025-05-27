@@ -1,7 +1,6 @@
-package fix64
+package fixedPoint
 
 import (
-	"errors"
 	"math"
 	"math/bits"
 )
@@ -9,22 +8,9 @@ import (
 type UFix64 uint64
 type Fix64 int64
 
-type UFix128 [2]uint64
-type Fix128 [2]int64
-
 const fix64Scale = 1e8
+const fix64One Fix64 = fix64Scale
 
-// const fix128Scale = 1e24
-
-var (
-	ErrOverflow    = errors.New("fix64: overflow")
-	ErrNegOverflow = errors.New("fix64: negative overflow")
-	ErrUnderflow   = errors.New("fix64: underflow")
-	ErrDivByZero   = errors.New("fix64: division by zero")
-	ErrDomain      = errors.New("fix64: input out of domain")
-)
-
-// AddUFix64 returns a + b, errors on overflow.
 func (a UFix64) Add(b UFix64) (UFix64, error) {
 	sum, carry := bits.Add64(uint64(a), uint64(b), 0)
 	if carry != 0 {
@@ -44,33 +30,6 @@ func (a Fix64) Add(b Fix64) (Fix64, error) {
 	}
 
 	return sum, nil
-}
-
-func (a UFix128) Add(b UFix128) (UFix128, error) {
-	sum0, carry := bits.Add64(a[0], b[0], 0)
-	sum1, carry2 := bits.Add64(a[1], b[1], carry)
-	if carry2 != 0 {
-		return UFix128{}, ErrOverflow
-	}
-	return UFix128{sum0, sum1}, nil
-}
-
-func (a Fix128) Add(b Fix128) (Fix128, error) {
-	// Add as unsigned values
-	sum0, carry := bits.Add64(uint64(a[0]), uint64(b[0]), 0)
-	sum1, _ := bits.Add64(uint64(a[1]), uint64(b[1]), carry)
-
-	// Interpret high words as signed
-	s1 := int64(sum1)
-
-	// Detect signed overflow:
-	// If a1 and b1 have same sign, but result has different sign, it's overflow
-	if (a[1] > 0 && b[1] > 0 && s1 < 0) ||
-		(a[1] < 0 && b[1] < 0 && s1 >= 0) {
-		return Fix128{}, ErrOverflow
-	}
-
-	return Fix128{int64(sum0), int64(sum1)}, nil
 }
 
 func (a UFix64) Sub(b UFix64) (UFix64, error) {
@@ -297,6 +256,7 @@ func (a Fix64) FMD(b, c Fix64) (Fix64, error) {
 type fix64_12 int64
 
 const fix64_12Scale = 1e12
+const fix64_12One fix64_12 = fix64_12Scale
 
 func addFix64_12(a, b fix64_12) (fix64_12, error) {
 	// Adding two Fix64_12 numbers is equivalent to adding two Fix64 numbers
@@ -348,7 +308,7 @@ func (x UFix64) Sqrt() (UFix64, error) {
 		}
 
 		// When error is too small to matter, we can stop.
-		if uint64(diff.Abs()) < 5 {
+		if uint64(diff.Abs()) < 3 {
 			break
 		}
 
@@ -369,6 +329,8 @@ func (x UFix64) Ln() (Fix64, error) {
 	// The Taylor expansion of ln(x) converges faster for values closer to 1.
 	// If we scale the input to have exactly 37 leading zero bits, the input will
 	// be a number in the range (0.67108864, 1.33584262). (0.67108864 = 1 << 36 / scale)
+	// For every power of two removed (or added) by this shift, we add (or subtract)
+	// a multiple of ln(2) at the end of the function.
 	leadingZeros := bits.LeadingZeros64(uint64(x))
 	k := 37 - leadingZeros
 
@@ -381,14 +343,10 @@ func (x UFix64) Ln() (Fix64, error) {
 	// We use the higher precision fix64_12 type for the Taylor series approximation.
 	x_12 := fixToTwelve(Fix64(x))
 
-	// Adding and subtracting 1e12 is equivalent to subtracting and adding 1.
-	num := x_12 - fix64_12(fix64_12Scale)
-	den := x_12 + fix64_12(fix64_12Scale)
-
 	// We will compute ln(x) using the approximation:
 	// ln(x) = 2 * (z + z^3/3 + z^5/5 + z^7/7 + ...)
 	// where z = (x - 1) / (x + 1)
-	z, err := divFix64_12(num, den)
+	z, err := divFix64_12(x_12-fix64_12One, x_12+fix64_12One)
 	if err != nil {
 		return 0, err
 	}
@@ -401,8 +359,8 @@ func (x UFix64) Ln() (Fix64, error) {
 	sum := z
 	iter := int64(1)
 
-	// Keep interating until term and/or next round to zero at the precision
-	// of a Fix64.
+	// Keep interating until "term" and/or "next" rounds to zero (at the precision
+	// of a Fix64).
 	for {
 		term, err = mulFix64_12(term, z2)
 
@@ -411,18 +369,24 @@ func (x UFix64) Ln() (Fix64, error) {
 		} else if err != nil {
 			return 0, err
 		}
+
+		// We can use basic arithmetic here since we are dividing by a
+		// an integer constant
 		next := fix64_12(int64(term) / (iter*2 + 1))
 
 		if next == 0 {
 			break
 		}
 
-		sum, _ = addFix64_12(sum, next)
+		// We can use basic arithmetic here since we know we are adding
+		// small terms that can't overflow (positive or negative)
+		sum += next
 		iter += 1
 	}
 
-	// Multiply by 2 for the z series and add/subtract as many ln(2)s as
-	// required to account for the scaling by 2^k we did at the beginning.
+	// Multiply by 2 to account for the global 2x at the begining of the Tayler
+	// expansion, and then add/subtract as many ln(2)s as required to account
+	// for the scaling by 2^k we did at the beginning.
 	ln2_fix64_12 := fix64_12(693147180559) // ln(2) * 1e12
 	sum = sum*2 + fix64_12(k)*ln2_fix64_12
 
@@ -435,22 +399,22 @@ func (x Fix64) Exp() (Fix64, error) {
 
 	// If x is 0, return 1.
 	if x == 0 {
-		return Fix64(fix64Scale), nil
+		return fix64One, nil
 	}
 
 	// TODO: These bounds could be tightened...
 	// Values over e^26 are too large to represent in a Fix64, and values under
 	// e^-18 are too small.
-	if x >= 26*fix64Scale {
+	if x >= 26*fix64One {
 		return 0, ErrOverflow
-	} else if x < -18*fix64Scale {
+	} else if x < -18*fix64One {
 		return 0, ErrUnderflow
 	}
 
 	// If the input is negative, we could use the Taylor series below, but it
 	// turns out that for negative numbers, the series diverges for some number
 	// of iterations before starting to converge. Instead, we use the fact that
-	// e^x just one over e^-x; positive exponents converge relatively quickly.
+	// e^x is equal to 1/e^-x; positive exponents converge relatively quickly.
 	inverted := false
 
 	if x < 0 {
@@ -461,42 +425,48 @@ func (x Fix64) Exp() (Fix64, error) {
 	// Use the higher precision fix64_12 type for the Taylor series approximation.
 	x_12 := fixToTwelve(x)
 
-	// We scale the input down somewhat so we can fit the result inside our
+	// We scale the input down somewhat so we can fit the *result* inside our
 	// internal fix64_12 type. For each power of 2 that we shift the input down,
 	// we will compensate at the end by squaring.
 	scaleFactor := 0
 
-	for x_12 > 8*fix64_12Scale {
+	// NOTE: Because the highest value that can get this far is 26 (see above)
+	//       this loop will run at most twice. As above, this bound could be
+	//       tightened.
+	for x_12 > 8*fix64_12One {
 		x_12 = x_12 >> 1
 		scaleFactor += 1
 	}
 
-	term := fix64_12(fix64_12Scale)
-	sum := fix64_12(fix64_12Scale)
+	term := fix64_12One
+	sum := fix64_12One
 
 	// Use the Taylor series to compute e^x. The series is:
 	// e^x = 1 + x + x^2/2! + x^3/3! + x^4/4! + ...
 	// This loop tends to converge in 20-40 iterations, but we hardcap to 50
 	// to avoid runaway.
-	for i := 1; i < 50; i++ {
-		// Add another power of x to the term.
+	for i := int64(1); i < 50; i++ {
+		// Multiply in another power of x to the term.
 		term, err = mulFix64_12(term, x_12)
 		if err != nil {
 			return 0, err
 		}
 
 		// Divide by the iteration number to account for the factorial.
-		term, err = divFix64_12(term, fix64_12(i*fix64_12Scale))
+		// We can use simple division here because we know that we are
+		// dividing by an integer constant that can't overflow.
+		term = fix64_12(int64(term) / i)
 
 		// Break out of the loop when the term is too small to change the sum.
-		if err == ErrUnderflow {
+		// TODO: We should probably break out of this loop when term < 1000
+		// (which is the smallest fix64_12 value representable in Fix64)
+		if term == 0 {
 			break
-		} else if err != nil {
-			return 0, err
 		}
 
-		// Add the current term to the sum.
-		sum, _ = addFix64_12(sum, term)
+		// Add the current term to the sum, we can use basic arithmetic
+		// because we know we are adding converging terms that can't overflow.
+		sum += term
 	}
 
 	// Convert the result back to the lower precision Fix64 type.
@@ -512,8 +482,9 @@ func (x Fix64) Exp() (Fix64, error) {
 		scaleFactor -= 1
 	}
 
+	// If we inverted the result on the way in, return 1/result.
 	if inverted {
-		result, err = Fix64(fix64Scale).Div(result)
+		result, err = fix64One.Div(result)
 		if err != nil {
 			return 0, err
 		}
@@ -526,6 +497,10 @@ func (a Fix64) Pow(b Fix64) (Fix64, error) {
 	if a == 0 {
 		return 0, nil
 	}
+	if b == fix64One {
+		return a, nil
+	}
+
 	lnA, err := UFix64(a).Ln()
 	if err != nil {
 		return 0, err
@@ -538,12 +513,6 @@ func (a Fix64) Pow(b Fix64) (Fix64, error) {
 }
 
 const fix64PI = Fix64(314159265)
-
-// I found it on the internet!
-func abs(n int64) int64 {
-	y := n >> 63
-	return (n ^ y) - y
-}
 
 func clampAngle(x Fix64) Fix64 {
 	x = x % (fix64PI * 2)
@@ -572,7 +541,7 @@ func (x Fix64) Sin() (Fix64, error) {
 	// If x is small, we can just return x since sin(x) is approximately x for small x.
 	// In fact, any value less than 391486/100000000 (0.00391486) will round to 0 in the
 	// space of a Fix64 when we do the first step below (x^3/3!).
-	if abs(int64(x)) < 391486 {
+	if int64(x.Abs()) < 391486 {
 		return x, nil
 	}
 
@@ -644,6 +613,9 @@ func (x Fix64) Tan() (Fix64, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	// TODO: This would be more accurate in the last bit or so if we had internal
+	// versions of Sin and Cos that returned fix64_12...
 	return sinX.Div(cosX)
 }
 

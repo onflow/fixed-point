@@ -1,4 +1,4 @@
-package fix64
+package fixedPoint
 
 import (
 	"fmt"
