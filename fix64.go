@@ -91,11 +91,19 @@ func signedMulHelper(a, b int64, scale uint64) (int64, error) {
 		b = -b
 	}
 
-	result, err := unsignedMulHelper(uint64(a), uint64(b), scale)
-	if result > math.MaxInt64 {
+	prod, err := unsignedMulHelper(uint64(a), uint64(b), scale)
+
+	// Special case: if the result's sign should be negative and the product is 0x8000000000000000,
+	// the result is valid and equal to math.MinInt64. (Note that 0x8000000000000000 is
+	// LARGER than math.MaxInt64, so this requires special handling.)
+	if sign < 0 && prod == 0x8000000000000000 {
+		return math.MinInt64, nil
+	}
+
+	if prod > math.MaxInt64 {
 		return 0, ErrOverflow
 	}
-	return int64(result) * sign, err
+	return int64(prod) * sign, err
 }
 
 func (a UFix64) Mul(b UFix64) (UFix64, error) {
@@ -109,12 +117,13 @@ func (a Fix64) Mul(b Fix64) (Fix64, error) {
 }
 
 func unsignedDivHelper(a, b, scale uint64) (uint64, error) {
-	if a == 0 {
-		return 0, nil
+	if b == 0 {
+		// Must come before the check for a == 0 so we flag 0.0/0.0 as an error.
+		return 0, ErrDivByZero
 	}
 
-	if b == 0 {
-		return 0, ErrDivByZero
+	if a == 0 {
+		return 0, nil
 	}
 
 	// The bits.Div64 accepts 128-bits for the dividend, and we can apply
@@ -161,9 +170,13 @@ func signedDivHelper(a, b int64, scale uint64) (int64, error) {
 		return 0, err
 	}
 
-	// TODO: Technically, we should accept a value that is one bigger if
-	// the sign is negative, since the magnitude of the most negative int64 is one
-	// bigger than the most positive int64.
+	// Special case: if the result's sign should be negative and the quotient is 0x8000000000000000,
+	// the result is valid and equal to math.MinInt64. (Note that 0x8000000000000000 is
+	// LARGER than math.MaxInt64, so this requires special handling.)
+	if sign < 0 && quo == 0x8000000000000000 {
+		return math.MinInt64, nil
+	}
+
 	if quo > math.MaxInt64 {
 		return 0, ErrOverflow
 	}

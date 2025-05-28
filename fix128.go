@@ -21,18 +21,43 @@ var (
 // A raw128 value that represents the scale factor for UFix128 and Fix128 (1e24).
 var fix128Scale = raw128{Hi: 54210, Lo: 2003764205206896640}
 
-func (a UFix128) isZero() bool {
+func (a UFix128) IsZero() bool {
 	return raw128(a).isZero()
 }
 
-func (a Fix128) isZero() bool {
+func (a Fix128) IsZero() bool {
 	return raw128(a).isZero()
 }
 
-func (a Fix128) Neg() Fix128 {
+func (a Fix128) Neg() (Fix128, error) {
+	// Negating a Fix128 is equivalent to subtracting it from zero, and
+	// will always succeed UNLESS the input value is the most negative value.
+	if a.Hi == 0x8000000000000000 && a.Lo == 0 {
+		return Fix128Zero, ErrOverflow
+	}
+
 	res, _ := sub128(raw128Zero, raw128(a), 0)
 
-	return Fix128(res)
+	return Fix128(res), nil
+}
+
+func (a UFix128) Cmp(b UFix128) int {
+	// Compare as unsigned values
+	return ucmp128(raw128(a), raw128(b))
+}
+
+func (a Fix128) Cmp(b Fix128) int {
+	// Compare as signed values
+	return scmp128(raw128(a), raw128(b))
+}
+
+func (a Fix128) Abs() (Fix128, error) {
+	// If the value is negative, negate it to get the absolute value.
+	if a.Hi < 0 {
+		return a.Neg()
+	}
+
+	return a, nil
 }
 
 func (a UFix128) Add(b UFix128) (UFix128, error) {
@@ -102,12 +127,13 @@ func (a UFix128) Mul(b UFix128) (UFix128, error) {
 }
 
 func (a UFix128) Div(b UFix128) (UFix128, error) {
-	if a.isZero() {
-		return UFix128Zero, nil
+	if b.IsZero() {
+		// Must come before the check for a == 0 so we flag 0.0/0.0 as an error.
+		return UFix128Zero, ErrDivByZero
 	}
 
-	if b.isZero() {
-		return UFix128Zero, ErrDivByZero
+	if a.IsZero() {
+		return UFix128Zero, nil
 	}
 
 	// We can apply the scale factor BEFORE we divide

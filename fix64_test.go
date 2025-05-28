@@ -170,6 +170,14 @@ func TestMulFix64(t *testing.T) {
 			t.Errorf("MulFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
 		}
 	}
+	for _, tc := range MulFix64UnderflowTests {
+		a := Fix64(tc.A)
+		b := Fix64(tc.B)
+		_, err := a.Mul(b)
+		if err != ErrUnderflow {
+			t.Errorf("MulFix64(0x%016x, 0x%016x) expected underflow error, got: %v", tc.A, tc.B, err)
+		}
+	}
 }
 
 func TestDivUFix64(t *testing.T) {
@@ -192,6 +200,14 @@ func TestDivUFix64(t *testing.T) {
 		_, err := a.Div(b)
 		if err != ErrOverflow {
 			t.Errorf("DivUFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
+		}
+	}
+	for _, tc := range DivUFix64UnderflowTests {
+		a := UFix64(tc.A)
+		b := UFix64(tc.B)
+		_, err := a.Div(b)
+		if err != ErrUnderflow {
+			t.Errorf("DivUFix64(0x%016x, 0x%016x) expected underflow error, got: %v", tc.A, tc.B, err)
 		}
 	}
 	for _, tc := range DivUFix64DivByZeroTests {
@@ -224,6 +240,14 @@ func TestDivFix64(t *testing.T) {
 		_, err := a.Div(b)
 		if err != ErrOverflow {
 			t.Errorf("DivFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
+		}
+	}
+	for _, tc := range DivFix64UnderflowTests {
+		a := Fix64(tc.A)
+		b := Fix64(tc.B)
+		_, err := a.Div(b)
+		if err != ErrUnderflow {
+			t.Errorf("DivFix64(0x%016x, 0x%016x) expected underflow error, got: %v", tc.A, tc.B, err)
 		}
 	}
 	for _, tc := range DivFix64DivByZeroTests {
@@ -291,15 +315,3 @@ func BenchmarkAddUFix64_Reference(b *testing.B) {
 // 		_ = a.Abs()
 // 	}
 // }
-
-var MulUFix64UnderflowTests = []struct{ A, B uint64 }{
-	// These are example underflow cases for UFix64 multiplication
-	{0x0000000000000001, 0x0000000000000001}, // Smallest * Smallest
-	{0x0000000000000001, 0x000000000000000A}, // Smallest * Small
-	{0x000000000000000A, 0x0000000000000001}, // Small * Smallest
-	{0x0000000000000001, 0x0000000000000064}, // Smallest * Small
-	{0x0000000000000064, 0x0000000000000001}, // Small * Smallest
-	{0x0000000000000001, 0x00000000000003E8}, // Smallest * Small
-	{0x00000000000003E8, 0x0000000000000001}, // Small * Smallest
-	// Add more edge underflow cases as needed
-}

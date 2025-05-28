@@ -114,6 +114,8 @@ SubUFix64NegOverflowTests = [
     ("HalfMaxUFix64", "HalfMaxUFix64 + 0.0001"),
     ("HalfMaxUFix64", "HalfMaxUFix64 + 0.00001"),
     ("HalfMaxUFix64", "HalfMaxUFix64 + 0.000001"),
+    ("HalfMaxUFix64", "HalfMaxUFix64 + 0.0000001"),
+    ("HalfMaxUFix64", "HalfMaxUFix64 + 0.00000001"),
     ("HalfMaxUFix64 + 0.00000001", "HalfMaxUFix64 + 0.00000002"),
     ("HalfMaxUFix64", "HalfMaxUFix64 + 0.00000002"),
 ]

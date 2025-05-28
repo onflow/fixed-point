@@ -16,6 +16,8 @@ def to_ufix64(val):
 
 def to_fix64(val):
     n = int(Decimal(val) * FIX64_SCALE)
+    if n < -0x8000000000000000 or n > 0x7FFFFFFFFFFFFFFF:
+        raise ValueError(f"Value {val} out of Fix64 range")
     return n & MASK
 
 def go_hex(val):

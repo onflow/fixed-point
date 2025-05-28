@@ -1,10 +1,10 @@
 # fix64_testgen.py
 # Code generator for Go test data arrays for UFix64 and Fix64 arithmetic
 
-from add64 import generate_add_ufix64_tests, generate_add_ufix64_overflow_tests, generate_add_fix64_tests, generate_add_fix64_overflow_tests, generate_add_fix64_neg_overflow_tests
-from sub64 import generate_sub_ufix64_tests, generate_sub_ufix64_neg_overflow_tests, generate_sub_fix64_tests, generate_sub_fix64_overflow_tests, generate_sub_fix64_neg_overflow_tests
-from mul64 import generate_mul_ufix64_tests, generate_mul_ufix64_overflow_tests, generate_mul_fix64_tests, generate_mul_fix64_overflow_tests
-from div64 import generate_div_ufix64_tests, generate_div_ufix64_overflow_tests, generate_div_ufix64_divbyzero_tests, generate_div_fix64_tests, generate_div_fix64_overflow_tests, generate_div_fix64_divbyzero_tests
+from add64 import *
+from sub64 import *
+from mul64 import *
+from div64 import *
 
 def main():
     go_lines = [
@@ -24,13 +24,18 @@ def main():
     go_lines.extend(generate_sub_fix64_neg_overflow_tests())
     go_lines.extend(generate_mul_ufix64_tests())
     go_lines.extend(generate_mul_ufix64_overflow_tests())
+    go_lines.extend(generate_mul_ufix64_underflow_tests())
     go_lines.extend(generate_mul_fix64_tests())
     go_lines.extend(generate_mul_fix64_overflow_tests())
+    go_lines.extend(generate_mul_fix64_underflow_tests())
+    go_lines.extend(generate_mul_fix64_neg_overflow_tests())
     go_lines.extend(generate_div_ufix64_tests())
     go_lines.extend(generate_div_ufix64_overflow_tests())
+    go_lines.extend(generate_div_ufix64_underflow_tests())
     go_lines.extend(generate_div_ufix64_divbyzero_tests())
     go_lines.extend(generate_div_fix64_tests())
     go_lines.extend(generate_div_fix64_overflow_tests())
+    go_lines.extend(generate_div_fix64_underflow_tests())
     go_lines.extend(generate_div_fix64_divbyzero_tests())
     print('\n'.join(go_lines))
 
