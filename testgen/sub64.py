@@ -1,9 +1,7 @@
 # sub64.py - Generates Go test data for UFix64 and Fix64 subtraction (including overflow)
 
-from decimal import Decimal, getcontext
-from utils import to_ufix64, to_fix64, go_hex, FIX64_SCALE, MASK, parseInput64
-
-getcontext().prec = 50
+from decimal import Decimal
+from utils import *
 
 # Test cases for subtraction
 SubUFix64Tests = [
@@ -259,9 +257,9 @@ def generate_sub_ufix64_tests():
         a = parseInput64(a_str)
         b = parseInput64(b_str)
         c = a - b
-        a_hex = go_hex(to_ufix64(a))
-        b_hex = go_hex(to_ufix64(b))
-        c_hex = go_hex(to_ufix64(max(c, 0)))
+        a_hex = go_hex64(to_ufix64(a))
+        b_hex = go_hex64(to_ufix64(b))
+        c_hex = go_hex64(to_ufix64(max(c, 0)))
         comment = f"// {a_str} - {b_str} = {c}"
         pad = " " * (60 - len(f"    {{{a_hex}, {b_hex}, {c_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}, {c_hex}}},{pad}{comment}")
@@ -273,8 +271,8 @@ def generate_sub_ufix64_neg_overflow_tests():
     for a_str, b_str in SubUFix64NegOverflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_ufix64(a))
-        b_hex = go_hex(to_ufix64(b))
+        a_hex = go_hex64(to_ufix64(a))
+        b_hex = go_hex64(to_ufix64(b))
         comment = f"// {a_str} - {b_str} = neg overflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -287,9 +285,9 @@ def generate_sub_fix64_tests():
         a = parseInput64(a_str)
         b = parseInput64(b_str)
         c = a - b
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
-        c_hex = go_hex(to_fix64(c))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
+        c_hex = go_hex64(to_fix64(c))
         comment = f"// {a_str} - {b_str} = {c}"
         pad = " " * (60 - len(f"    {{{a_hex}, {b_hex}, {c_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}, {c_hex}}},{pad}{comment}")
@@ -301,8 +299,8 @@ def generate_sub_fix64_overflow_tests():
     for a_str, b_str in SubFix64OverflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
         comment = f"// {a_str} - {b_str} = overflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -314,8 +312,8 @@ def generate_sub_fix64_neg_overflow_tests():
     for a_str, b_str in SubFix64NegOverflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
         comment = f"// {a_str} - {b_str} = neg overflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")

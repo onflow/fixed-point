@@ -170,6 +170,14 @@ func TestMulFix64(t *testing.T) {
 			t.Errorf("MulFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
 		}
 	}
+	for _, tc := range MulFix64NegOverflowTests {
+		a := Fix64(tc.A)
+		b := Fix64(tc.B)
+		_, err := a.Mul(b)
+		if err != ErrNegOverflow {
+			t.Errorf("MulFix64(0x%016x, 0x%016x) expected negative overflow error, got: %v", tc.A, tc.B, err)
+		}
+	}
 	for _, tc := range MulFix64UnderflowTests {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
@@ -242,6 +250,14 @@ func TestDivFix64(t *testing.T) {
 			t.Errorf("DivFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
 		}
 	}
+	for _, tc := range DivFix64NegOverflowTests {
+		a := Fix64(tc.A)
+		b := Fix64(tc.B)
+		_, err := a.Div(b)
+		if err != ErrNegOverflow {
+			t.Errorf("DivFix64(0x%016x, 0x%016x) expected negative overflow error, got: %v", tc.A, tc.B, err)
+		}
+	}
 	for _, tc := range DivFix64UnderflowTests {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
@@ -260,58 +276,35 @@ func TestDivFix64(t *testing.T) {
 	}
 }
 
-func BenchmarkAddUFix64(b *testing.B) {
-	a := UFix64(123456789)
-	c := UFix64(987654321)
-	for i := 0; i < b.N; i++ {
-		_, _ = a.Add(c)
+func TestSqrtUFix64(t *testing.T) {
+	for i, tc := range SqrtUFix64Tests {
+		a := UFix64(tc.A)
+		expected := UFix64(tc.Expected)
+		res, err := a.Sqrt()
+		if err != nil {
+			t.Errorf("SqrtUFix64(0x%016x) (%d) returned error: %v", tc.A, i, err)
+			continue
+		}
+		if res != expected {
+			t.Errorf("SqrtUFix64(0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, res, i, expected)
+		}
 	}
 }
 
-func BenchmarkAddUFix64_Reference(b *testing.B) {
-	a := 123456789
-	c := 987654321
-	for i := 0; i < b.N; i++ {
-		_ = a + c
+func TestLnUFix64(t *testing.T) {
+	for i, tc := range LnUFix64Tests {
+		a := UFix64(tc.A)
+		expected := Fix64(tc.Expected)
+		res, err := a.Ln()
+		if err != nil {
+			t.Errorf("LnFix64(0x%016x) (%d) returned error: %v", tc.A, i, err)
+			continue
+		}
+		diff, _ := res.Sub(expected)
+		diff = diff.Abs()
+
+		if res != expected {
+			t.Errorf("LnFix64(0x%016x) = 0x%016x (%d), want 0x%016x (±%d)", tc.A, res, i, expected, diff)
+		}
 	}
 }
-
-// func BenchmarkSubUFix64(b *testing.B) {
-// 	a := UFix64(987654321)
-// 	c := UFix64(123456789)
-// 	for i := 0; i < b.N; i++ {
-// 		_, _ = a.Sub(c)
-// 	}
-// }
-
-// func BenchmarkMulUFix64(b *testing.B) {
-// 	a := UFix64(123456789)
-// 	c := UFix64(987654321)
-// 	for i := 0; i < b.N; i++ {
-// 		_, _ = a.Mul(c)
-// 	}
-// }
-
-// func BenchmarkDivUFix64(b *testing.B) {
-// 	a := UFix64(987654321)
-// 	c := UFix64(123456789)
-// 	for i := 0; i < b.N; i++ {
-// 		_, _ = a.Div(c)
-// 	}
-// }
-
-// func BenchmarkFMDUFix64(b *testing.B) {
-// 	a := UFix64(123456789)
-// 	c := UFix64(987654321)
-// 	d := UFix64(55555555)
-// 	for i := 0; i < b.N; i++ {
-// 		_, _ = a.FMD(c, d)
-// 	}
-// }
-
-// func BenchmarkAbsFix64(b *testing.B) {
-// 	a := Fix64(-123456789)
-// 	for i := 0; i < b.N; i++ {
-// 		_ = a.Abs()
-// 	}
-// }

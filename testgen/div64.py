@@ -2,7 +2,7 @@
 # Generates Go test data for UFix64 and Fix64 division (including overflow/div by zero)
 
 from decimal import Decimal, getcontext
-from utils import to_ufix64, to_fix64, go_hex, FIX64_SCALE, MASK, parseInput64
+from utils import to_ufix64, to_fix64, go_hex64, FIX64_SCALE, MASK64, parseInput64
 
 getcontext().prec = 50
 
@@ -427,6 +427,21 @@ DivFix64Tests = [
 
 # Overflow and DivByZero test data for Fix64 division
 DivFix64OverflowTests = [
+    ("MinFix64", "-0.00000001"),
+    ("MinFix64", "-0.0000001"),
+    ("MinFix64", "-0.000001"),
+    ("MinFix64", "-0.0001"),
+    ("MinFix64", "-0.001"),
+    ("MinFix64", "-0.01"),
+    ("MinFix64", "-0.1"),
+    ("MinFix64", "-0.99999999"),
+    ("HalfMinFix64", "-0.00000001"),
+    ("HalfMinFix64", "-0.0000001"),
+    ("HalfMinFix64", "-0.000001"),
+    ("HalfMinFix64", "-0.0001"),
+    ("HalfMinFix64", "-0.001"),
+    ("HalfMinFix64", "-0.01"),
+    ("HalfMinFix64", "-0.1"),
     ("MaxFix64", "0.00000001"),
     ("MaxFix64", "0.0000001"),
     ("MaxFix64", "0.000001"),
@@ -441,6 +456,38 @@ DivFix64OverflowTests = [
     ("HalfMaxFix64", "0.001"),
     ("HalfMaxFix64", "0.01"),
     ("HalfMaxFix64", "0.1"),
+]
+
+DivFix64NegOverflowTests = [
+    ("MinFix64", "0.00000001"),
+    ("MinFix64", "0.0000001"),
+    ("MinFix64", "0.000001"),
+    ("MinFix64", "0.0001"),
+    ("MinFix64", "0.001"),
+    ("MinFix64", "0.01"),
+    ("MinFix64", "0.1"),
+    ("MinFix64", "0.99999999"),
+    ("HalfMinFix64", "0.00000001"),
+    ("HalfMinFix64", "0.0000001"),
+    ("HalfMinFix64", "0.000001"),
+    ("HalfMinFix64", "0.0001"),
+    ("HalfMinFix64", "0.001"),
+    ("HalfMinFix64", "0.01"),
+    ("HalfMinFix64", "0.1"),
+    ("MaxFix64", "-0.00000001"),
+    ("MaxFix64", "-0.0000001"),
+    ("MaxFix64", "-0.000001"),
+    ("MaxFix64", "-0.0001"),
+    ("MaxFix64", "-0.001"),
+    ("MaxFix64", "-0.01"),
+    ("MaxFix64", "-0.1"),
+    ("HalfMaxFix64", "-0.00000001"),
+    ("HalfMaxFix64", "-0.0000001"),
+    ("HalfMaxFix64", "-0.000001"),
+    ("HalfMaxFix64", "-0.0001"),
+    ("HalfMaxFix64", "-0.001"),
+    ("HalfMaxFix64", "-0.01"),
+    ("HalfMaxFix64", "-0.1"),
 ]
 
 
@@ -479,9 +526,9 @@ def generate_div_ufix64_tests():
             c = a / b
         except Exception:
             c = Decimal('0')
-        a_hex = go_hex(to_ufix64(a))
-        b_hex = go_hex(to_ufix64(b))
-        c_hex = go_hex(to_ufix64(c))
+        a_hex = go_hex64(to_ufix64(a))
+        b_hex = go_hex64(to_ufix64(b))
+        c_hex = go_hex64(to_ufix64(c))
         comment = f"// {a_str} / {b_str} = {c}"
         pad = " " * (60 - len(f"    {{{a_hex}, {b_hex}, {c_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}, {c_hex}}},{pad}{comment}")
@@ -493,8 +540,8 @@ def generate_div_ufix64_overflow_tests():
     for a_str, b_str in DivUFix64OverflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_ufix64(a))
-        b_hex = go_hex(to_ufix64(b))
+        a_hex = go_hex64(to_ufix64(a))
+        b_hex = go_hex64(to_ufix64(b))
         comment = f"// {a_str} / {b_str} = overflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -506,8 +553,8 @@ def generate_div_ufix64_underflow_tests():
     for a_str, b_str in DivUFix64UnderflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_ufix64(a))
-        b_hex = go_hex(to_ufix64(b))
+        a_hex = go_hex64(to_ufix64(a))
+        b_hex = go_hex64(to_ufix64(b))
         comment = f"// {a_str} / {b_str} = underflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -519,8 +566,8 @@ def generate_div_ufix64_divbyzero_tests():
     for a_str, b_str in DivUFix64DivByZeroTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_ufix64(a))
-        b_hex = go_hex(to_ufix64(b))
+        a_hex = go_hex64(to_ufix64(a))
+        b_hex = go_hex64(to_ufix64(b))
         comment = f"// {a_str} / {b_str} = div by zero"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -536,9 +583,9 @@ def generate_div_fix64_tests():
             c = a / b
         except Exception:
             c = Decimal('0')
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
-        c_hex = go_hex(to_fix64(c))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
+        c_hex = go_hex64(to_fix64(c))
         comment = f"// {a_str} / {b_str} = {c}"
         pad = " " * (60 - len(f"    {{{a_hex}, {b_hex}, {c_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}, {c_hex}}},{pad}{comment}")
@@ -550,9 +597,22 @@ def generate_div_fix64_overflow_tests():
     for a_str, b_str in DivFix64OverflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
         comment = f"// {a_str} / {b_str} = overflow"
+        pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
+        lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
+    lines.append("}")
+    return lines
+
+def generate_div_fix64_neg_overflow_tests():
+    lines = ["var DivFix64NegOverflowTests = []struct{ A, B uint64 }{"]
+    for a_str, b_str in DivFix64NegOverflowTests:
+        a = parseInput64(a_str)
+        b = parseInput64(b_str)
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
+        comment = f"// {a_str} / {b_str} = negative overflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
     lines.append("}")
@@ -563,8 +623,8 @@ def generate_div_fix64_underflow_tests():
     for a_str, b_str in DivFix64UnderflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
         comment = f"// {a_str} / {b_str} = underflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -576,8 +636,8 @@ def generate_div_fix64_divbyzero_tests():
     for a_str, b_str in DivFix64DivByZeroTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
         comment = f"// {a_str} / {b_str} = div by zero"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -596,6 +656,7 @@ def main():
     go_lines.extend(generate_div_ufix64_divbyzero_tests())
     go_lines.extend(generate_div_fix64_tests())
     go_lines.extend(generate_div_fix64_overflow_tests())
+    go_lines.extend(generate_div_fix64_neg_overflow_tests())
     go_lines.extend(generate_div_fix64_underflow_tests())
     go_lines.extend(generate_div_fix64_divbyzero_tests())
     print('\n'.join(go_lines))

@@ -1,7 +1,7 @@
 # mul64.py - Generates Go test data for UFix64 and Fix64 multiplication (including overflow/underflow)
 
 from decimal import Decimal, getcontext
-from utils import to_ufix64, to_fix64, go_hex, FIX64_SCALE, MASK, parseInput64
+from utils import to_ufix64, to_fix64, go_hex64, FIX64_SCALE, MASK64, parseInput64
 
 getcontext().prec = 50
 
@@ -333,6 +333,14 @@ MulFix64OverflowTests = [
     ("HalfMaxFix64", "HalfMaxFix64 + 0.00001"),
     ("HalfMaxFix64", "HalfMaxFix64 + 0.000001"),
     ("HalfMaxFix64 + 0.00000001", "HalfMaxFix64 + 0.00000001"),
+    ("HalfMinFix64", "HalfMinFix64 + 1.0"),
+    ("HalfMinFix64", "HalfMinFix64 + 0.1"),
+    ("HalfMinFix64", "HalfMinFix64 + 0.01"),
+    ("HalfMinFix64", "HalfMinFix64 + 0.001"),
+    ("HalfMinFix64", "HalfMinFix64 + 0.0001"),
+    ("HalfMinFix64", "HalfMinFix64 + 0.00001"),
+    ("HalfMinFix64", "HalfMinFix64 + 0.000001"),
+    ("HalfMinFix64", "HalfMinFix64 + 0.0000001"),
 ]
 
 MulFix64UnderflowTests = [
@@ -433,24 +441,28 @@ MulFix64UnderflowTests = [
 
 
 MulFix64NegOverflowTests = [
+    ("MinFix64", "1.00000001"),
+    ("MinFix64", "1.0000001"),
     ("MinFix64", "1.1"),
-    ("MinFix64", "0.1"),
-    ("MinFix64", "0.01"),
-    ("MinFix64", "0.001"),
-    ("MinFix64", "0.0001"),
-    ("MinFix64", "0.00001"),
-    ("MinFix64", "0.000001"),
-    ("MinFix64", "0.0000001"),
-    ("MinFix64", "0.00000001"),
+    ("MinFix64", "2.0"),
+    ("MinFix64", "10"),
+    ("MinFix64", "100"),
+    ("MinFix64", "1000"),
+    ("MinFix64", "10000"),
+    ("MinFix64", "100000"),
+    ("MinFix64", "1000000"),
+    ("MinFix64", "10000000"),
+    ("MinFix64", "100000000"),
+    ("MinFix64", "1000000000"),
     ("MinFix64", "MaxFix64"),
-    ("HalfMinFix64", "HalfMinFix64 + 1.0"),
-    ("HalfMinFix64", "HalfMinFix64 + 0.1"),
-    ("HalfMinFix64", "HalfMinFix64 + 0.01"),
-    ("HalfMinFix64", "HalfMinFix64 + 0.001"),
-    ("HalfMinFix64", "HalfMinFix64 + 0.0001"),
-    ("HalfMinFix64", "HalfMinFix64 + 0.00001"),
-    ("HalfMinFix64", "HalfMinFix64 + 0.000001"),
-    ("HalfMinFix64", "HalfMinFix64 + 0.0000001"),
+    ("HalfMaxFix64", "HalfMinFix64 + 1.0"),
+    ("HalfMaxFix64", "HalfMinFix64 + 0.1"),
+    ("HalfMaxFix64", "HalfMinFix64 + 0.01"),
+    ("HalfMaxFix64", "HalfMinFix64 + 0.001"),
+    ("HalfMaxFix64", "HalfMinFix64 + 0.0001"),
+    ("HalfMaxFix64", "HalfMinFix64 + 0.00001"),
+    ("HalfMaxFix64", "HalfMinFix64 + 0.000001"),
+    ("HalfMaxFix64", "HalfMinFix64 + 0.0000001"),
 ]
 
 def generate_mul_ufix64_tests():
@@ -459,9 +471,9 @@ def generate_mul_ufix64_tests():
         a = parseInput64(a_str)
         b = parseInput64(b_str)
         c = a * b
-        a_hex = go_hex(to_ufix64(a))
-        b_hex = go_hex(to_ufix64(b))
-        c_hex = go_hex(to_ufix64(c))
+        a_hex = go_hex64(to_ufix64(a))
+        b_hex = go_hex64(to_ufix64(b))
+        c_hex = go_hex64(to_ufix64(c))
         comment = f"// {a_str} * {b_str} = {c}"
         pad = " " * (60 - len(f"    {{{a_hex}, {b_hex}, {c_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}, {c_hex}}},{pad}{comment}")
@@ -473,8 +485,8 @@ def generate_mul_ufix64_overflow_tests():
     for a_str, b_str in MulUFix64OverflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_ufix64(a))
-        b_hex = go_hex(to_ufix64(b))
+        a_hex = go_hex64(to_ufix64(a))
+        b_hex = go_hex64(to_ufix64(b))
         comment = f"// {a_str} * {b_str} = overflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -486,8 +498,8 @@ def generate_mul_ufix64_underflow_tests():
     for a_str, b_str in MulUFix64UnderflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_ufix64(a))
-        b_hex = go_hex(to_ufix64(b))
+        a_hex = go_hex64(to_ufix64(a))
+        b_hex = go_hex64(to_ufix64(b))
         comment = f"// {a_str} * {b_str} = underflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -500,9 +512,9 @@ def generate_mul_fix64_tests():
         a = parseInput64(a_str)
         b = parseInput64(b_str)
         c = a * b
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
-        c_hex = go_hex(to_fix64(c))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
+        c_hex = go_hex64(to_fix64(c))
         comment = f"// {a_str} * {b_str} = {c}"
         pad = " " * (60 - len(f"    {{{a_hex}, {b_hex}, {c_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}, {c_hex}}},{pad}{comment}")
@@ -514,8 +526,8 @@ def generate_mul_fix64_overflow_tests():
     for a_str, b_str in MulFix64OverflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
         comment = f"// {a_str} * {b_str} = overflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -527,8 +539,8 @@ def generate_mul_fix64_underflow_tests():
     for a_str, b_str in MulFix64UnderflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
         comment = f"// {a_str} * {b_str} = underflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
@@ -540,8 +552,8 @@ def generate_mul_fix64_neg_overflow_tests():
     for a_str, b_str in MulFix64NegOverflowTests:
         a = parseInput64(a_str)
         b = parseInput64(b_str)
-        a_hex = go_hex(to_fix64(a))
-        b_hex = go_hex(to_fix64(b))
+        a_hex = go_hex64(to_fix64(a))
+        b_hex = go_hex64(to_fix64(b))
         comment = f"// {a_str} * {b_str} = neg overflow"
         pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
         lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")

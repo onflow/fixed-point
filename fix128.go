@@ -20,6 +20,7 @@ var (
 
 // A raw128 value that represents the scale factor for UFix128 and Fix128 (1e24).
 var fix128Scale = raw128{Hi: 54210, Lo: 2003764205206896640}
+var fix128One = Fix128(fix128Scale)
 
 func (a UFix128) IsZero() bool {
 	return raw128(a).isZero()
@@ -29,6 +30,10 @@ func (a Fix128) IsZero() bool {
 	return raw128(a).isZero()
 }
 
+func (a Fix128) isNeg() bool {
+	return int64(a.Hi) < 0
+}
+
 func (a Fix128) Neg() (Fix128, error) {
 	// Negating a Fix128 is equivalent to subtracting it from zero, and
 	// will always succeed UNLESS the input value is the most negative value.
@@ -36,6 +41,8 @@ func (a Fix128) Neg() (Fix128, error) {
 		return Fix128Zero, ErrOverflow
 	}
 
+	// This subtraction is guaranteed to succeed without overflow. We could theoretically do
+	// some bitwise operations here, but sub128 should inline to just two instructions...
 	res, _ := sub128(raw128Zero, raw128(a), 0)
 
 	return Fix128(res), nil
@@ -88,7 +95,7 @@ func (a UFix128) Sub(b UFix128) (UFix128, error) {
 	rawDiff, borrow := sub128(raw128(a), raw128(b), 0)
 
 	if borrow != 0 {
-		return UFix128Zero, ErrUnderflow
+		return UFix128Zero, ErrNegOverflow
 	}
 
 	return UFix128(rawDiff), nil
@@ -126,6 +133,79 @@ func (a UFix128) Mul(b UFix128) (UFix128, error) {
 	return UFix128(quo), nil
 }
 
+// An internal function that returns the sign flip of a value of a Fix128 as a UFix128.
+// This is used in our division and multiplication functions to ensure that we
+// can still handle the most negative value of Fix128 (0x8000000000000000, 0)
+// which is not representable as a positive value in Fix128.
+func (a Fix128) negAndConvert() UFix128 {
+	if a.Hi == 0x8000000000000000 && a.Lo == 0 {
+		return UFix128(a)
+	} else {
+		// This subtraction is guaranteed to succeed without overflow. We could theoretically do
+		// some bitwise operations here, but sub128 should inline to just two instructions...
+		res, _ := sub128(raw128Zero, raw128(a), 0)
+		return UFix128(res)
+	}
+}
+
+func (a Fix128) Mul(b Fix128) (Fix128, error) {
+	resultIsNeg := false
+
+	var aU, bU UFix128
+
+	if a.isNeg() {
+		resultIsNeg = !resultIsNeg
+		aU = a.negAndConvert()
+	} else {
+		aU = UFix128(a)
+	}
+
+	if b.isNeg() {
+		resultIsNeg = !resultIsNeg
+		bU = b.negAndConvert()
+	} else {
+		bU = UFix128(b)
+	}
+
+	// Call the unsigned multiplication function.
+	prod, err := aU.Mul(bU)
+
+	if err != nil {
+		if err == ErrOverflow && resultIsNeg {
+			return Fix128Zero, ErrNegOverflow
+		} else {
+			return Fix128Zero, err
+		}
+	}
+
+	// Special case: if the result's sign should be negative and the product is 0x8000000000000000,
+	// the result is valid and equal to math.MinInt64. (Note that 0x8000000000000000 is
+	// LARGER than math.MaxInt64, so this requires special handling.)
+	if resultIsNeg && prod.Hi == 0x8000000000000000 && prod.Lo == 0 {
+		return Fix128{Hi: 0x8000000000000000, Lo: 0}, nil
+	}
+
+	if prod.Hi > 0x7FFFFFFFFFFFFFFF {
+		// If the product is larger than the maximum value of Fix128, we return an overflow error.
+		if resultIsNeg {
+			return Fix128Zero, ErrNegOverflow
+		} else {
+			return Fix128Zero, ErrOverflow
+		}
+	}
+
+	res := Fix128(prod)
+
+	if resultIsNeg {
+		// We inline the subtractin intsead of calling Neg() because we don't need to check for
+		// overflow (we've alread done the checks above).
+		temp, _ := sub128(raw128Zero, raw128(res), 0)
+		res = Fix128(temp)
+	}
+
+	return res, err
+}
+
 func (a UFix128) Div(b UFix128) (UFix128, error) {
 	if b.IsZero() {
 		// Must come before the check for a == 0 so we flag 0.0/0.0 as an error.
@@ -159,6 +239,64 @@ func (a UFix128) Div(b UFix128) (UFix128, error) {
 	}
 
 	return UFix128(quo), nil
+}
+
+func (a Fix128) Div(b Fix128) (Fix128, error) {
+	resultIsNeg := false
+
+	var aU, bU UFix128
+
+	if a.isNeg() {
+		resultIsNeg = !resultIsNeg
+		aU = a.negAndConvert()
+	} else {
+		aU = UFix128(a)
+	}
+
+	if b.isNeg() {
+		resultIsNeg = !resultIsNeg
+		bU = b.negAndConvert()
+	} else {
+		bU = UFix128(b)
+	}
+
+	// Call the unsigned division function.
+	prod, err := aU.Div(bU)
+
+	if err != nil {
+		if err == ErrOverflow && resultIsNeg {
+			return Fix128Zero, ErrNegOverflow
+		} else {
+			return Fix128Zero, err
+		}
+	}
+
+	// Special case: if the result's sign should be negative and the product is 0x8000000000000000,
+	// the result is valid and equal to math.MinInt64. (Note that 0x8000000000000000 is
+	// LARGER than math.MaxInt64, so this requires special handling.)
+	if resultIsNeg && prod.Hi == 0x8000000000000000 && prod.Lo == 0 {
+		return Fix128{Hi: 0x8000000000000000, Lo: 0}, nil
+	}
+
+	if prod.Hi > 0x7FFFFFFFFFFFFFFF {
+		// If the product is larger than the maximum value of Fix128, we return an overflow error.
+		if resultIsNeg {
+			return Fix128Zero, ErrNegOverflow
+		} else {
+			return Fix128Zero, ErrOverflow
+		}
+	}
+
+	res := Fix128(prod)
+
+	if resultIsNeg {
+		// We inline the subtractin intsead of calling Neg() because we don't need to check for
+		// overflow (we've alread done the checks above).
+		temp, _ := sub128(raw128Zero, raw128(res), 0)
+		res = Fix128(temp)
+	}
+
+	return res, err
 }
 
 func (a raw128) isZero() bool {
@@ -354,15 +492,29 @@ func div192by128(hi, mid, lo uint64, y raw128) (quot raw128, rem raw128) {
 	// Now we just need to compute the final remainder
 	pHi, pLo = mul128By64(y, quot.Lo)
 
+	// NOTE: The final of the three subtractions should always result in zero, but we still do it to
+	// see if our estimate was too high, and set the borroow flag.
 	rem.Lo, borrow = bits.Sub64(lo, pLo.Lo, 0)
-	rem.Hi, _ = bits.Sub64(interimMid, pLo.Hi, borrow)
+	rem.Hi, borrow = bits.Sub64(interimMid, pLo.Hi, borrow)
+	_, borrow = bits.Sub64(interimHi, pHi.Lo, borrow)
+
+	if borrow != 0 {
+		// As above, our estimate could be too high, if we borrowed in that final subtraction
+		// our quotiont is too high, so we need to decrement it by 1.
+		quot.Lo--
+
+		// Add a copy of the denominator to get the right remainder.
+		var carry uint64
+		rem.Lo, carry = bits.Add64(rem.Lo, y.Lo, 0)
+		rem.Hi, _ = bits.Add64(rem.Hi, y.Hi, carry)
+	}
 
 	return
 }
 
 // A helper function to perform unsigned long division of a 256-bit numerator
 // by a 128-bit denominator. Used as an analogue of bits.Div64 for 128-bit fixed-point division.
-func div128(hi, lo, y raw128) (quot raw128) {
+func div128(hi, lo, y raw128) raw128 {
 	if y.isZero() {
 		panic("div128: division by zero")
 	}
