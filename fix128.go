@@ -4,14 +4,6 @@ import (
 	"math/bits"
 )
 
-type raw128 struct {
-	Hi uint64
-	Lo uint64
-}
-
-type UFix128 raw128
-type Fix128 raw128
-
 var (
 	raw128Zero  = raw128{0, 0}
 	UFix128Zero = UFix128(raw128Zero)
@@ -19,8 +11,7 @@ var (
 )
 
 // A raw128 value that represents the scale factor for UFix128 and Fix128 (1e24).
-var fix128Scale = raw128{Hi: 54210, Lo: 2003764205206896640}
-var fix128One = Fix128(fix128Scale)
+var fix128Scale = raw128{54210, 2003764205206896640}
 
 func (a UFix128) IsZero() bool {
 	return raw128(a).isZero()
@@ -60,7 +51,7 @@ func (a Fix128) Cmp(b Fix128) int {
 
 func (a Fix128) Abs() (Fix128, error) {
 	// If the value is negative, negate it to get the absolute value.
-	if a.Hi < 0 {
+	if int64(a.Hi) < 0 {
 		return a.Neg()
 	}
 
@@ -128,7 +119,7 @@ func (a UFix128) Mul(b UFix128) (UFix128, error) {
 		return UFix128Zero, ErrUnderflow
 	}
 
-	quo := div128(hi, lo, fix128Scale)
+	quo, _ := div128(hi, lo, fix128Scale)
 
 	return UFix128(quo), nil
 }
@@ -230,7 +221,7 @@ func (a UFix128) Div(b UFix128) (UFix128, error) {
 		return UFix128Zero, ErrOverflow
 	}
 
-	quo := div128(hi, lo, raw128(b))
+	quo, _ := div128(hi, lo, raw128(b))
 
 	// We can't get here if a == 0 because we checked that first. So,
 	// a quotient of 0 means the result is too small to represent, i.e. underflow.
@@ -333,6 +324,13 @@ func scmp128(a, b raw128) int {
 	}
 
 	return 0
+}
+
+func add128To64(a raw128, b uint64) (sum raw128) {
+	var carry uint64
+	sum.Lo, carry = bits.Add64(a.Lo, b, 0)
+	sum.Hi, _ = bits.Add64(a.Hi, 0, carry)
+	return sum
 }
 
 func add128(a, b raw128, carry uint64) (sum raw128, carryOut uint64) {
@@ -514,7 +512,7 @@ func div192by128(hi, mid, lo uint64, y raw128) (quot raw128, rem raw128) {
 
 // A helper function to perform unsigned long division of a 256-bit numerator
 // by a 128-bit denominator. Used as an analogue of bits.Div64 for 128-bit fixed-point division.
-func div128(hi, lo, y raw128) raw128 {
+func div128(hi, lo, y raw128) (quo raw128, rem raw128) {
 	if y.isZero() {
 		panic("div128: division by zero")
 	}
@@ -532,22 +530,22 @@ func div128(hi, lo, y raw128) raw128 {
 			panic("div128: overflow")
 		}
 
-		qHi, rem := bits.Div64(hi.Lo, lo.Hi, y.Lo)
-		qLo, _ := bits.Div64(rem, lo.Lo, y.Lo)
-		return raw128{qHi, qLo}
+		qHi, r := bits.Div64(hi.Lo, lo.Hi, y.Lo)
+		qLo, r := bits.Div64(r, lo.Lo, y.Lo)
+		return raw128{qHi, qLo}, raw128{0, r}
 	}
 
 	// We use the "divide and conquer" approach to compute the quotient of a 256-bit numerator
 	// by a 128-bit denominator. It involves two calls to a 192 over 128 division algorithm,
 	// ("3 by 2" division)
 	qHi, rHi := div192by128(hi.Hi, hi.Lo, lo.Hi, y)
-	qLo, _ := div192by128(rHi.Hi, rHi.Lo, lo.Lo, y)
+	qLo, rem := div192by128(rHi.Hi, rHi.Lo, lo.Lo, y)
 
 	// Effectively multiple qHi by 2^64, assuming that qHi is under 2^64 to start with
 	qHi.Hi = qHi.Lo
 	qHi.Lo = 0
 
-	quo, _ := add128(qHi, qLo, 0)
+	quo, _ = add128(qHi, qLo, 0)
 
-	return quo
+	return quo, rem
 }

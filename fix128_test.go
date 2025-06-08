@@ -276,20 +276,22 @@ func TestDivFix128(t *testing.T) {
 	}
 }
 
-// func TestSqrtUFix128(t *testing.T) {
-// 	for i, tc := range SqrtUFix128Tests {
-// 		a := UFix128(tc.A)
-// 		expected := UFix128(tc.Expected)
-// 		res, err := a.Sqrt()
-// 		if err != nil {
-// 			t.Errorf("SqrtUFix128(0x%016x) (%d) returned error: %v", tc.A, i, err)
-// 			continue
-// 		}
-// 		if res != expected {
-// 			t.Errorf("SqrtUFix128(0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, res, i, expected)
-// 		}
-// 	}
-// }
+func TestSqrtUFix128(t *testing.T) {
+	for i, tc := range SqrtUFix64Tests {
+		a := UFix128{0, tc.A}
+		expected := UFix128{0, tc.Expected}
+		a = a.intMul(1e16)
+		expected = expected.intMul(1e16)
+		res, err := a.SqrtTest()
+		if err != nil {
+			t.Errorf("SqrtUFix128(0x%016x) (%d) returned error: %v", tc.A, i, err)
+			continue
+		}
+		if res != expected {
+			t.Errorf("SqrtUFix128(0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, res, i, expected)
+		}
+	}
+}
 
 // func TestLnUFix128(t *testing.T) {
 // 	for i, tc := range LnUFix128Tests {

@@ -76,6 +76,12 @@ DivUFix64Tests = [
     ("MaxUFix64", "1.0"),
     ("MaxUFix64", "2.0"),
     ("MaxUFix64", "MaxUFix64"),
+    ("MaxUFix64", "MaxUFix64 - 1"),
+    ("MaxUFix64 - 1", "MaxUFix64"),
+    ("MaxUFix64 - 1", "MaxUFix64 - 1"),
+    ("MaxUFix64", "MaxUFix64 - 1e-8"),
+    ("MaxUFix64 - 1e-8", "MaxUFix64"),
+    ("MaxUFix64 - 1", "MaxUFix64 - 1e-8"),
     ("HalfMaxUFix64", "2.0"),
     ("HalfMaxUFix64", "HalfMaxUFix64"),
     ("HalfMaxUFix64 + 0.00000001", "HalfMaxUFix64"),
@@ -104,6 +110,11 @@ DivUFix64Tests = [
     ("0.01", "999999.99999999"),
     ("0.1", "9999999.99999999"),
     ("1.0", "99999999.99999999"),
+
+    # Less than 1e-8, but ROUND to 1e-8...
+    ("1e-8", "2"),
+    ("1", "2e-8"),
+    ("9", "1e-8"),
 
     # Should divide to the largest UFix64
     ("184467440737.09551615", "1.0"),
@@ -145,7 +156,7 @@ DivUFix64OverflowTests = [
 ]
 
 DivUFix64UnderflowTests = [
-    ("0.00000001", "2.0"),
+    ("0.00000001", "2.1"),
     ("0.00000001", "10.0"),
     ("0.00000001", "100.0"),
     ("0.00000001", "1000.0"),
@@ -160,6 +171,7 @@ DivUFix64UnderflowTests = [
 DivUFix64DivByZeroTests = [
     ("1.0", "0.0"),
     ("0.0", "0.0"),
+    ("1e-8", "0.0"),
     ("MaxUFix64", "0.0"),
     ("HalfMaxUFix64", "0.0"),
 ]
@@ -288,9 +300,39 @@ DivFix64Tests = [
     ("MaxFix64", "1.0"),
     ("MaxFix64", "2.0"),
     ("MaxFix64", "MaxFix64"),
+    ("MaxFix64", "MinFix64"),
     ("MinFix64", "1.0"),
     ("MinFix64", "2.0"),
     ("MinFix64", "MinFix64"),
+    ("MinFix64", "MaxFix64"),
+
+    ("MaxFix64", "MaxFix64 - 1"),
+    ("MaxFix64 - 1", "MaxFix64"),
+    ("MaxFix64 - 1", "MaxFix64 - 1"),
+    ("MaxFix64", "MaxFix64 - 1e-8"),
+    ("MaxFix64 - 1e-8", "MaxFix64"),
+    ("MaxFix64 - 1e-8", "MaxFix64 - 1e-8"),
+
+    ("MaxFix64", "MinFix64 + 1"),
+    ("MaxFix64 - 1", "MinFix64"),
+    ("MaxFix64 - 1", "MinFix64 + 1"),
+    ("MaxFix64", "MinFix64 + 1e-8"),
+    ("MaxFix64 - 1e-8", "MinFix64"),
+    ("MaxFix64 - 1e-8", "MinFix64 + 1e-8"),
+
+    ("MinFix64", "MaxFix64 - 1"),
+    ("MinFix64 + 1", "MaxFix64"),
+    ("MinFix64 + 1", "MaxFix64 - 1"),
+    ("MinFix64", "MaxFix64 - 1e-8"),
+    ("MinFix64 + 1e-8", "MaxFix64"),
+    ("MinFix64 + 1e-8", "MaxFix64 - 1e-8"),
+
+    ("MinFix64", "MinFix64 + 1"),
+    ("MinFix64 + 1", "MinFix64"),
+    ("MinFix64 + 1", "MinFix64 + 1"),
+    ("MinFix64", "MinFix64 + 1e-8"),
+    ("MinFix64 + 1e-8", "MinFix64"),
+    ("MinFix64 + 1e-8", "MinFix64 + 1e-8"),
 
     # Things that divide to the smallest Fix64 (in magnitude)
     ("0.00000001", "1"),
@@ -493,9 +535,7 @@ DivFix64NegOverflowTests = [
 
 DivFix64UnderflowTests = [
     # Underflow cases for Fix64 division (results too small to represent)
-    ("0.00000001", "1.0000001"),
-    ("0.00000001", "1.1"),
-    ("0.00000001", "2.0"),
+    ("0.00000001", "2.1"),
     ("0.00000001", "10.0"),
     ("0.00000001", "100.0"),
     ("0.00000001", "1000.0"),

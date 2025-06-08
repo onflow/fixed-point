@@ -105,7 +105,7 @@ func BenchmarkSqrt64(b *testing.B) {
 func BenchmarkSqrt128(b *testing.B) {
 	a := UFix128{234334, 123456789}
 	for i := 0; i < b.N; i++ {
-		_, _ = a.Sqrt()
+		_, _ = a.SqrtTest()
 	}
 }
 
@@ -120,5 +120,12 @@ func BenchmarkLnUFix128(b *testing.B) {
 	a := UFix128{123456789, 987654321}
 	for i := 0; i < b.N; i++ {
 		_, _ = a.Ln()
+	}
+}
+
+func BenchmarkSinFix64(b *testing.B) {
+	a := Fix64(40075472476)
+	for i := 0; i < b.N; i++ {
+		_, _ = a.Sin()
 	}
 }

@@ -5,6 +5,7 @@ from add64 import *
 from sub64 import *
 from mul64 import *
 from div64 import *
+from fmd64 import *
 from trans64 import *
 from decimal import getcontext
 
@@ -41,8 +42,17 @@ def main():
     go_lines.extend(generate_div_fix64_neg_overflow_tests())
     go_lines.extend(generate_div_fix64_underflow_tests())
     go_lines.extend(generate_div_fix64_divbyzero_tests())
+    go_lines.extend(generate_fmd_ufix64_tests())
+    go_lines.extend(generate_fmd_ufix64_overflow_tests())
+    go_lines.extend(generate_fmd_ufix64_underflow_tests())
+    go_lines.extend(generate_fmd_ufix64_divbyzero_tests())
     go_lines.extend(generate_sqrt_ufix64_tests())
     go_lines.extend(generate_ln_ufix64_tests())
+    go_lines.extend(generate_sin_fix64_tests())
+    go_lines.extend(generate_cos_fix64_tests())
+    go_lines.extend(generate_tan_fix64_tests())
+    go_lines.extend(generate_asin_fix64_tests())
+    go_lines.extend(generate_acos_fix64_tests())
     print('\n'.join(go_lines))
 
 if __name__ == "__main__":

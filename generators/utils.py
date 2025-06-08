@@ -11,13 +11,13 @@ MASK64 = 0xFFFFFFFFFFFFFFFF
 MASK128 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 
 def to_ufix64(val):
-    n = int(Decimal(val) * FIX64_SCALE)
+    n = int((Decimal(val) * FIX64_SCALE).quantize(1, rounding='ROUND_HALF_UP'))
     if n < 0 or n > MASK64:
         raise ValueError(f"Value {val} out of UFix64 range")
     return n & MASK64
 
 def to_fix64(val):
-    n = int(Decimal(val) * FIX64_SCALE)
+    n = int((Decimal(val) * FIX64_SCALE).quantize(1, rounding='ROUND_HALF_UP'))
     if n < -0x8000000000000000 or n > 0x7FFFFFFFFFFFFFFF:
         raise ValueError(f"Value {val} out of Fix64 range")
     return n & MASK64
@@ -35,10 +35,10 @@ def to_fix128(val):
     return n & MASK128
 
 def go_hex64(val):
-    return f"0x{val:016X}"
+    return f"0x{val:016x}"
 
 def go_hex128(val):
-    return f"raw128{{0x{(val >> 64):016X}, 0x{(val & MASK64):016X}}}"
+    return f"raw128{{0x{(val >> 64):016x}, 0x{(val & MASK64):016x}}}"
 
 def parseInput64(s):
     s = s.strip()

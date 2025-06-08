@@ -276,6 +276,50 @@ func TestDivFix64(t *testing.T) {
 	}
 }
 
+func TestFMDUFix64(t *testing.T) {
+	for i, tc := range FMDUFix64Tests {
+		a := UFix64(tc.A)
+		b := UFix64(tc.B)
+		c := UFix64(tc.C)
+		expected := UFix64(tc.Expected)
+		res, err := a.FMD(b, c)
+		if err != nil {
+			t.Errorf("FMDUFix64(0x%016x, 0x%016x, 0x%016x) (%d) returned error: %v", tc.A, tc.B, tc.C, i, err)
+			continue
+		}
+		if res != expected {
+			t.Errorf("FMDUFix64(0x%016x, 0x%016x, 0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, tc.B, tc.C, res, i, expected)
+		}
+	}
+	for i, tc := range FMDUFix64OverflowTests {
+		a := UFix64(tc.A)
+		b := UFix64(tc.B)
+		c := UFix64(tc.C)
+		_, err := a.FMD(b, c)
+		if err != ErrOverflow {
+			t.Errorf("FMDUFix64(0x%016x, 0x%016x, 0x%016x) (%d) expected overflow error, got: %v", tc.A, tc.B, tc.C, i, err)
+		}
+	}
+	for i, tc := range FMDUFix64UnderflowTests {
+		a := UFix64(tc.A)
+		b := UFix64(tc.B)
+		c := UFix64(tc.C)
+		_, err := a.FMD(b, c)
+		if err != ErrUnderflow {
+			t.Errorf("FMDUFix64(0x%016x, 0x%016x, 0x%016x) (%d) expected underflow error, got: %v", tc.A, tc.B, tc.C, i, err)
+		}
+	}
+	for _, tc := range FMDUFix64DivByZeroTests {
+		a := UFix64(tc.A)
+		b := UFix64(tc.B)
+		c := UFix64(tc.C)
+		_, err := a.FMD(b, c)
+		if err != ErrDivByZero {
+			t.Errorf("FMDUFix64(0x%016x, 0x%016x, 0x%016x) expected div by zero error, got: %v", tc.A, tc.B, tc.C, err)
+		}
+	}
+}
+
 func TestSqrtUFix64(t *testing.T) {
 	for i, tc := range SqrtUFix64Tests {
 		a := UFix64(tc.A)
@@ -308,3 +352,67 @@ func TestLnUFix64(t *testing.T) {
 		}
 	}
 }
+
+func TestSinFix64(t *testing.T) {
+	for i, tc := range SinFix64Tests {
+		a := Fix64(tc.A)
+		expected := Fix64(tc.Expected)
+		res, err := a.Sin()
+		diff, _ := res.Sub(expected)
+		diff = diff.Abs()
+		if err != nil {
+			t.Errorf("SinFix64(0x%016x) (%d) returned error: %v", tc.A, i, err)
+			continue
+		}
+		// We accept minimal error in the lowest digit
+		if diff > 0 {
+			t.Errorf("SinFix64(0x%016x) = 0x%016x (%d), want 0x%016x (±%d)", tc.A, res, i, expected, diff)
+		}
+	}
+}
+
+func TestCosFix64(t *testing.T) {
+	for i, tc := range CosFix64Tests {
+		a := Fix64(tc.A)
+		expected := Fix64(tc.Expected)
+		res, err := a.Cos()
+		diff, _ := res.Sub(expected)
+		diff = diff.Abs()
+		if err != nil {
+			t.Errorf("CosFix64(0x%016x) (%d) returned error: %v", tc.A, i, err)
+			continue
+		}
+		// We accept minimal error in the lowest digit
+		if diff > 1 {
+			t.Errorf("CosFix64(0x%016x) = 0x%016x (%d), want 0x%016x (±%d)", tc.A, res, i, expected, diff)
+		}
+	}
+}
+
+// Commented out because tan() is only of speculative value for smart contracts, and getting a bit-accurate value
+// is proving to be VERY complicated. Fundamentally, since tan(x) = sin(x)/cos(x), and cos(x) can be very small
+// the error in tan(x) can be very large, even if sin(x) and cos(x) are accurate to the last bit.
+
+// func TestTanFix64(t *testing.T) {
+// 	for i, tc := range TanFix64Tests {
+// 		a := Fix64(tc.A)
+// 		expected := Fix64(tc.Expected)
+// 		res, err := a.TanTest()
+// 		diff, _ := res.Sub(expected)
+// 		diff = diff.Abs()
+// 		if err != nil {
+// 			t.Errorf("TanFix64(0x%016x) (%d) returned error: %v", tc.A, i, err)
+// 			continue
+// 		}
+// 		if diff > 1 {
+// 			t.Errorf("TanFix64(0x%016x) = 0x%016x (%d), want 0x%016x (±%d)", tc.A, res, i, expected, diff)
+// 		}
+// 	}
+// 	for _, tc := range TanFix64OverflowTests {
+// 		a := Fix64(tc.A)
+// 		_, err := a.Tan()
+// 		if err != ErrOverflow {
+// 			t.Errorf("TanFix64(0x%016x) expected overflow error, got: %v", tc.A, err)
+// 		}
+// 	}
+// }
