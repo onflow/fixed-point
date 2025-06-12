@@ -72,12 +72,12 @@ func (a fix64_extra) Sub(b fix64_extra) (fix64_extra, error) {
 }
 
 func (a fix64_extra) Mul(b fix64_extra) (fix64_extra, error) {
-	product, e := Fix64(a).Mul(Fix64(b))
-	return fix64_extra(product >> extraBits), e
+	product, e := Fix64(a).FMD(Fix64(b), Fix64(fix64_ExtraOne))
+	return fix64_extra(product), e
 }
 
 func (a fix64_extra) Div(b fix64_extra) (fix64_extra, error) {
-	quo, e := Fix64(a << extraBits).Div(Fix64(b))
+	quo, e := Fix64(a).FMD(Fix64(fix64_ExtraOne), Fix64(b))
 	return fix64_extra(quo), e
 }
 
@@ -100,6 +100,13 @@ func fixToExtra(x Fix64) fix64_extra {
 func extraToFix(x fix64_extra) Fix64 {
 	// Adding a half before shifting right to round to closest integer
 	x_plusHalf := int64(x) + (1 << (extraBits - 1))
+
+	if x < 0 {
+		// Crazy edge case: if x is negative, we want to add SLIGHTLY LESS
+		// Than half to get the correct rounding behavior.
+		x_plusHalf -= 1
+	}
+
 	return Fix64(x_plusHalf >> extraBits)
 }
 
@@ -411,22 +418,28 @@ func internalLn[T FixedPoint[T]](x T) (T, error) {
 	num, _ := x.Sub(x.one())
 	den, _ := x.Add(x.one())
 	z, err := num.Div(den)
-	if err != nil {
+	if err == ErrUnderflow {
+		// If z is too small to represent, we just return 0
+		return x.zero(), nil
+	} else if err != nil {
 		return x.zero(), err
 	}
 
-	// If we just use z directly, we don't have enough precision to get
-	// an accurate result
+	// Precompute z^2 to avoid recomputing it in the loop.
 	z2, err := z.Mul(z)
-	if err != nil {
+
+	if err == ErrUnderflow {
+		// If z^2 is too small, we just return 2*z, which is the first term
+		// in the series.
+		return z.intMul(2), nil
+	} else if err != nil {
 		return x.zero(), err
 	}
 	term := z
 	sum := z
 	iter := int64(1)
 
-	// Keep interating until "term" and/or "next" rounds to zero (at the precision
-	// of a Fix64).
+	// Keep interating until "term" and/or "next" rounds to zero
 	for {
 		term, err = term.Mul(z2)
 
@@ -474,7 +487,7 @@ func (x UFix64) Ln() (Fix64, error) {
 
 	// We directly cast here instead of using the conversion function, we take into
 	// account the extra bits of precision by modifying the shift value used above.
-	// This lets us use the bits from x that woudl "fall off" the right side if we
+	// This lets us use the bits from x that would "fall off" the right side if we
 	// just shifted right, and shifted back left again when moving to the extra precision type.
 	x_extra := fix64_extra(x)
 
@@ -484,13 +497,9 @@ func (x UFix64) Ln() (Fix64, error) {
 		return 0, err
 	}
 
-	// Multiply by 2 to account for the global 2x at the begining of the Tayler
-	// expansion, and then add/subtract as many ln(2)s as required to account
-	// for the scaling by 2^k we did at the beginning.
-	const ln2_e12 int64 = 693147180559945309                                  // ln(2) * 1e18, fixed-point representation
-	const ln2_extra int64 = ln2_e12 / (1e18 / (int64(Fix64One) << extraBits)) // ln(2) in extra precision
-
-	powerCorrection := fix64_extra(ln2_extra * k)
+	// Add/subtract as many ln(2)s as required to account for the scaling by 2^k we
+	// did at the beginning.
+	powerCorrection := fix64_extra((k*int64(ln2_fix64_term) + 2048) >> 12)
 	res_extra, _ = res_extra.Add(powerCorrection)
 
 	// Convert the result back to the lower precision Fix64 type.
@@ -545,104 +554,221 @@ func (x UFix128) Ln() (Fix128, error) {
 	return extraToFix128(res_extra), nil
 }
 
-// func (x Fix64) Exp() (Fix64, error) {
-// 	var err error
+func (x Fix64) Exp() (Fix64, error) {
+	var err error
 
-// 	// If x is 0, return 1.
-// 	if x == 0 {
-// 		return fix64One, nil
-// 	}
+	// If x is 0, return 1.
+	if x == 0 {
+		return Fix64One, nil
+	}
 
-// 	// TODO: These bounds could be tightened...
-// 	// Values over e^26 are too large to represent in a Fix64, and values under
-// 	// e^-18 are too small.
-// 	if x >= 26*fix64One {
-// 		return 0, ErrOverflow
-// 	} else if x < -18*fix64One {
-// 		return 0, ErrUnderflow
-// 	}
+	// We can quickly check to see if the input will overflow or underflow
+	if x > maxLn64 {
+		return 0, ErrOverflow
+	} else if x < minLn64 {
+		return 0, ErrUnderflow
+	}
 
-// 	// If the input is negative, we could compute it direcly using the Taylor
-// 	// series, but negative numbers DIVERGE before converging, so we leverage the
-// 	// fact that e^x is equal to 1/e^-x and positive exponents converge relatively
-// 	// quickly.
-// 	inverted := false
+	// If the input is negative, we could compute it direcly using the Taylor
+	// series, but negative numbers DIVERGE before converging, so we leverage the
+	// fact that e^x is equal to 1/e^-x and positive exponents converge relatively
+	// quickly.
+	inverted := false
 
-// 	if x < 0 {
-// 		inverted = true
-// 		x = -x
-// 	}
+	if x < 0 {
+		inverted = true
+		x = -x
+	}
 
-// 	// Use the higher precision fix64_12 type for the Taylor series approximation.
-// 	x_12 := fixToTwelve(x)
+	// Use the higher precision fix64_12 type for the Taylor series approximation.
+	x_extra := fixToExtra(x)
 
-// 	// We scale the input down somewhat so we can fit the *result* inside our
-// 	// internal fix64_12 type. For each power of 2 that we shift the input down,
-// 	// we will compensate at the end by squaring.
-// 	scaleFactor := 0
+	// We scale the input down somewhat so we can fit the *result* inside our
+	// internal fix64_12 type. For each power of 2 that we shift the input down,
+	// we will compensate at the end by squaring.
+	scaleFactor := 0
 
-// 	// NOTE: Because the highest value that can get this far is 26 (see above)
-// 	//       this loop will run at most twice. As above, this bound could be
-// 	//       tightened.
-// 	for x_12 > 8*fix64_12One {
-// 		x_12 = x_12 >> 1
-// 		scaleFactor += 1
-// 	}
+	// NOTE: Because the highest value that can get this far is 26 (see above)
+	//       this loop will run at most twice. As above, this bound could be
+	//       tightened.
+	for x_extra > 8*fix64ExtraScale {
+		x_extra = x_extra >> 1
+		scaleFactor += 1
+	}
 
-// 	term := fix64_12One
-// 	sum := fix64_12One
+	term := fix64_extra(fix64ExtraScale)
+	sum := fix64_extra(fix64ExtraScale)
 
-// 	// Use the Taylor series to compute e^x. The series is:
-// 	// e^x = 1 + x + x^2/2! + x^3/3! + x^4/4! + ...
-// 	// This loop tends to converge in 20-40 iterations, but we hardcap to 50
-// 	// to avoid runaway.
-// 	for i := int64(1); i < 50; i++ {
-// 		// Multiply in another power of x to the term.
-// 		term, err = mulFix64_12(term, x_12)
-// 		if err != nil {
-// 			return 0, err
-// 		}
+	// Use the Taylor series to compute e^x. The series is:
+	// e^x = 1 + x + x^2/2! + x^3/3! + x^4/4! + ...
+	// This loop tends to converge in 20-40 iterations, but we hardcap to 50
+	// to avoid runaway.
+	for i := int64(1); i < 50; i++ {
+		// Multiply in another power of x to the term.
+		term, err = term.Mul(x_extra)
 
-// 		// Divide by the iteration number to account for the factorial.
-// 		// We can use simple division here because we know that we are
-// 		// dividing by an integer constant that can't overflow.
-// 		term = fix64_12(int64(term) / i)
+		if err == ErrUnderflow {
+			// If the term is too small to represent, we can just break out of the loop.
+			break
+		} else if err != nil {
+			return 0, err
+		}
 
-// 		// Break out of the loop when the term is too small to change the sum.
-// 		// TODO: We should probably break out of this loop when term < 1000
-// 		// (which is the smallest fix64_12 value representable in Fix64)
-// 		if term == 0 {
-// 			break
-// 		}
+		// Divide by the iteration number to account for the factorial.
+		// We can use simple division here because we know that we are
+		// dividing by an integer constant that can't overflow.
+		term = term.intDiv(i)
 
-// 		// Add the current term to the sum, we can use basic arithmetic
-// 		// because we know we are adding converging terms that can't overflow.
-// 		sum += term
-// 	}
+		// Break out of the loop when the term is too small to change the sum.
+		// TODO: We should probably break out of this loop when term < 1000
+		// (which is the smallest fix64_12 value representable in Fix64)
+		if term == 0 {
+			break
+		}
 
-// 	// Convert the result back to the lower precision Fix64 type.
-// 	result := twelveToFix(sum)
+		// Add the current term to the sum, we can use basic arithmetic
+		// because we know we are adding converging terms that can't overflow.
+		sum += term
+	}
 
-// 	// Unwind our scaling factor by squaring the result as necessary.
-// 	for scaleFactor > 0 {
-// 		result, err = result.Mul(result)
+	// Convert the result back to the lower precision Fix64 type.
+	result := extraToFix(sum)
 
-// 		if err != nil {
-// 			return 0, err
-// 		}
-// 		scaleFactor -= 1
-// 	}
+	// Unwind our scaling factor by squaring the result as necessary.
+	for scaleFactor > 0 {
+		result, err = result.Mul(result)
 
-// 	// If we inverted the result on the way in, return 1/result.
-// 	if inverted {
-// 		result, err = fix64One.Div(result)
-// 		if err != nil {
-// 			return 0, err
-// 		}
-// 	}
+		if err != nil {
+			return 0, err
+		}
+		scaleFactor -= 1
+	}
 
-// 	return result, nil
-// }
+	// If we inverted the result on the way in, return 1/result.
+	if inverted {
+		result, err = Fix64One.Div(result)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	return result, nil
+}
+
+func (x Fix64) ExpTest() (UFix64, error) {
+	var err error
+
+	// If x is 0, return 1.
+	if x == 0 {
+		return UFix64One, nil
+	}
+
+	// We can quickly check to see if the input will overflow or underflow
+	if x > maxLn64 {
+		return 0, ErrOverflow
+	} else if x < minLn64 {
+		return 0, ErrUnderflow
+	}
+
+	internalScaleBits := int64(32)
+	internalScaleOne := Fix64One << internalScaleBits
+
+	// The input is in a very small range (between about -19 and 26), so we can
+	// start by converting into fix64_extra for extra precision, with an extra 2^10
+	// factor for the division by ln(2).
+
+	x_extra := fix64_extra(x << internalScaleBits)
+
+	// If k will be larger than extraBits, we are going to end up with errors at the end of the
+	// function, because we would have to shift the inner result left bringing in zeros).
+	// Fortunately, we can scale the input down by factors of 2, and then square
+	// the result an equivalent number of times to compensate, this will preserve more
+	requiredSquarings := 0
+	// squaringCutoff := fix64_extra(int64(ln2_fix64_term) * internalScaleBits)
+
+	// for x_extra > fix64_extra(squaringCutoff) {
+	// 	x_extra = x_extra >> 1
+	// 	requiredSquarings += 1
+	// }
+
+	// We can do the opposite of the trick we did in ln(x). There we, scaled the input
+	// by powers of 2, and then added/subtracted a multiples of ln(2) at the end. Here
+	// we can add/subtract multiples of ln(2) at the beginning, and then scale by
+	// the appropriate power of 2 at the end.
+	//
+	// We can use bare division here because we would throw out any fractional part anyway
+	k := int64(x_extra.intDiv(int64(ln2_fix64_term)))
+
+	// This is just a sanity check, the math above should ensure that k is always less than
+	// extraBits
+	if k >= internalScaleBits {
+		panic("k must be less than extraBits")
+	}
+
+	// Once we subtract k * ln(2) from the input (note that k can be negative) we should
+	// end up with a value in the range [0, ln(2)]
+	normalized_extra, _ := x_extra.Sub(ln2_fix64_term.intMul(k))
+
+	// Use the Taylor series to compute e^x. The series is:
+	// e^x = 1 + x + x^2/2! + x^3/3! + x^4/4! + ...
+	term := internalScaleOne
+	sum := internalScaleOne
+	iter := int64(1)
+
+	// This loop tends to converge in 20-40 iterations for values close to 1
+	for {
+		// Multiply in another power of x to the term.
+		term, err = term.FMD(Fix64(normalized_extra), internalScaleOne)
+
+		if err == ErrUnderflow {
+			// If the term is too small to represent, we can just break out of the loop.
+			break
+		} else if err != nil {
+			return 0, err
+		}
+
+		// Divide by the iteration number to account for the factorial.
+		// We can use simple division here because we know that we are
+		// dividing by an integer constant that can't overflow.
+		term = term.intDiv(iter)
+
+		// Break out of the loop when the term is too small to change the sum.
+		// TODO: We should probably break out of this loop when term < 1000
+		// (which is the smallest fix64_12 value representable in Fix64)
+		if term == 0 {
+			break
+		}
+
+		// Add the current term to the sum, we can use basic arithmetic
+		// because we know we are adding converging terms that can't overflow.
+		sum += term
+		iter += 1
+	}
+
+	if k >= internalScaleBits {
+		panic("k must be less than extraBits")
+	}
+
+	// We need to scale the result by 2^k and also shift out the extra bits we added
+	// to account for the fix64_extra type.
+	var shift int64 = internalScaleBits - k
+
+	if shift > 0 {
+		sum = sum + (1 << (shift - 1)) // Add half to round to nearest
+		sum = sum >> shift
+	}
+
+	res := UFix64(sum)
+
+	for range requiredSquarings {
+		res, err = res.Mul(res)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	return res, nil
+}
 
 // func (a Fix64) Pow(b Fix64) (Fix64, error) {
 // 	if a == 0 {
@@ -694,16 +820,16 @@ func internalSin[T FixedPoint[T]](x T, pi T, iota T) T {
 	//     sin(x) = 2•sin(x/2)•cos(x/2)
 	// At the same time, cos(y) = 1-2•sin²(y/2), so we can further expand this to:
 	//     sin(x) = 2•sin(x/2)•(1 - 2•sin²(x/4))
-	// if x.Cmp(pi.intDiv(4)) > 0 {
-	// 	// recursively call sin(x/2) and sin(x/4), this should only recurse once since we
-	// 	// reduced the input to the range [0, π/2] at the beginning of this function.
-	// 	sin_half := internalSin(x.intDiv(2), pi, iota)
-	// 	sin_quarter := internalSin(x.intDiv(4), pi, iota)
-	// 	sin_quarter_squared, _ := sin_quarter.Mul(sin_quarter)
-	// 	cosTerm, _ := x.one().Sub(sin_quarter_squared.intMul(2)) // cos(x/2) = 1 - 2•sin²(x/4)
-	// 	res, _ := sin_half.intMul(2).Mul(cosTerm)                // sin(x) = 2•sin(x/2)•cos(x/2)
-	// 	return res
-	// }
+	if x.Cmp(pi.intDiv(4)) > 0 {
+		// recursively call sin(x/2) and sin(x/4), this should only recurse once since we
+		// reduced the input to the range [0, π/2] at the beginning of this function.
+		sin_half := internalSin(x.intDiv(2), pi, iota)
+		sin_quarter := internalSin(x.intDiv(4), pi, iota)
+		sin_quarter_squared, _ := sin_quarter.Mul(sin_quarter)
+		cosTerm, _ := x.one().Sub(sin_quarter_squared.intMul(2)) // cos(x/2) = 1 - 2•sin²(x/4)
+		res, _ := sin_half.intMul(2).Mul(cosTerm)                // sin(x) = 2•sin(x/2)•cos(x/2)
+		return res
+	}
 
 	// sin(x) = x - x^3/3! + x^5/5! - x^7/7! + ...
 	x_squared, _ := x.Mul(x)
@@ -740,53 +866,90 @@ func internalSin[T FixedPoint[T]](x T, pi T, iota T) T {
 	return sum
 }
 
-func clampAngle(x Fix64) (res Fix64, isNeg bool) {
+// Normalizes the input angle x to the range [0, π], and returns a flag
+// indicating if the result should be interpreted as negative.
+func clampAngle(x Fix64) (res fix64_extra, isNeg bool) {
 	// The goal of this function is to normalize the input angle x to the range [0, pi], with
-	// a seperate flag to indicate if the result should be interpreted as negative. (Seperating
+	// a separate flag to indicate if the result should be interpreted as negative. (Separating
 	// out the sign is actually pretty convenient for the calling functions.)
+	var unsignedX uint64
 
-	if x < 0 {
+	if x >= 0 {
+		unsignedX = uint64(x)
+		isNeg = false
+	} else {
+		unsignedX = uint64(-x)
 		isNeg = true
-		x = -x
 	}
 
-	// Now that we have a positive value, we take it modulo 2*pi. Unfortunately, Fix64 doesn't
-	// have enough precision to accurately represent pi, and for large values of x,
-	// the result of x % (2•pi) will be very inaccurate.
-	//
-	// Fortunately for us, we have access to a 128/64 bit division function, that provides a
-	// remainder. We can scale up the input to a much higher precision and divide it by a constant
-	// that is ALSO a multiple of the fixed-point representation of pi.
-	//
-	// The constant above, called fix64_TwoPiShifted33, is equal to 2•pi•10^8•2^33. We take the input
-	// value (which is x•10^8) and scale it up by 2^33. We can then divide it by this constant to get:
-	//
-	//   x  •  10^8•2^33
-	//  -------------
-	//  2•pi • 10^8•2^33
-	//
-	// The remainder of this division will be in the range the remainder of x/2•pi, scaled up by 10^8•2^36.
-	// Since we WANT the remainder to be scaled up by 10^8, we can just shift the result right by 33 bits
-	// to get a result in the range [0, 2•pi]. We then subtract an additional 2•pi (if necessary) to
-	// bring the result into the range [-pi, pi], as is required by the taylor expansion for sin(x).
-	tempHi := uint64(x) >> 31
-	tempLo := uint64(x) << 33
+	// If the input is outside the range [0, 2π], we need to normalize it.
+	if unsignedX <= uint64(fix64_2Pi) {
+		// Input is already within the range [0, 2π], we can just shift it
+		// left by the extra bits to convert it to fix64_extra.
+		res = fix64_extra(unsignedX << extraBits)
+	} else {
+		// We know we have a positive value, and need take it modulo 2π. Unfortunately, Fix64 doesn't
+		// have enough precision to accurately represent pi, and for large values of x,
+		// the result of x % 2π will be very inaccurate.
 
-	_, scaledRem := bits.Div64(tempHi, tempLo, fix64_TwoPiShifted33)
+		// This first step is a cheap way to remove a large number of multiples of 2π from the input.
+		// The constant fix64_TwoPiMultiple is a multiple of 2π that is chosen to be VERY
+		// accurate in the space of a Fix64. By chosing a multiple of 2π that has a series
+		// of zeros in the 9th place and beyond, we can have a value that can be stored with
+		// 8 decimal places of precision, but which is accurate to several more decimal places.
+		//
+		// Even better, this constant is less than the maximum value representable as a fix64_extra,
+		// so we can then convert the input to a fix64_extra without worrying about overflow.
+		unsignedX = unsignedX % 646448019151968420
+		unsignedX = unsignedX % fix64_TwoPiMultiple
 
-	res = Fix64(scaledRem >> 33) // Shift right by 33 bits to get the remainder in the range [-2•pi, 2•pi]
+		x_extra := unsignedX << extraBits
 
-	// If the angle is greater than pi, it from 2*pi to bring it
-	// into the range [0, pi] and flip the sign flag.
+		// Now that we are in the range of of a fix64_extra, we can use ANOTHER modulus (similar
+		// to the one above) that minimizes the error at the precision of a fix64_extra. This
+		// constant isn't as obviously "pretty" as the one above (since fix64_extra isn't a neat
+		// multiple of 10), but the same logic applies.
+		x_extra = x_extra % 342709898545259501
+		x_extra = x_extra % uint64(fix64_extra_TwoPiMultiple)
 
-	if ((fix64_2Pi & 1) != 0) && (res == Fix64_Pi+1) {
-		// Weird edge case: if res is exactly Fix64_Pi + 1, (where 1 there is lowest bit of precision)
-		// AND the value of 2•pi is odd when converted to a Fix64, then subtracting res (which is NOT pi)
-		// from 2•pi will result in exactly pi! We handle this case specifically and return fix64_Pi - 1 instead.
-		res = Fix64_Pi - 1
+		// Fortunately for us, we have access to a 128/64 bit division function that provides a
+		// remainder. We can scale up the input to a much higher precision and divide it by a constant
+		// that is ALSO a multiple of the fixed-point representation of pi.
+		//
+		// The constant fix64_TwoPiShifted33 is equal to 2π • 10^8 • 2^33. We take the input
+		// value (which is x • 10^8) and scale it up by 2^33 (which is no problem if we extend
+		// the input temporarily to 128 bits). We can then divide this scaled up value our constant to get:
+		//
+		//   x  •  10^8 • 2^33
+		//  -------------------
+		//  2•pi • 10^8 • 2^33
+		//
+		// The remainder of this division will be in the range the remainder of x/2π, scaled up by 10^8 • 2^33.
+		// Since we WANT the remainder to be scaled up by 10^8, we can just shift the result right by 33 bits
+		// to get a result in the range [0, 2π].
+		tempHi := x_extra >> (64 - 21)
+		tempLo := x_extra << 21
+
+		_, scaledRem := bits.Div64(tempHi, tempLo, fix64_TwoPiShifted33)
+
+		// Shifting right by 33 bits would get the remainder in the range [-2π, 2π] as a Fix64.
+		// However, since we are returning fix64_extra anyway, we can scale it down by
+		// extraBits *fewer* places so keep some additional precision.
+		res = fix64_extra((scaledRem + (1 << 20)) >> 21)
+	}
+
+	// If the angle is greater than π, subract it from 2π to bring it
+	// into the range [0, π] and flip the sign flag.
+
+	if ((fix64_extra_2Pi & 1) != 0) && (res == fix64_extra_Pi+1) {
+		// Weird edge case: if res is exactly fix64_extra_Pi + 1, (where 1 is lowest bit of precision)
+		// AND the value of 2π is odd when converted to a fix64_extra, then subtracting res
+		// (which IS NOT π) from 2π will result in exactly π! We check for this case specifically
+		// and return fix64_Pi - 1 instead.
+		res = fix64_extra_Pi - 1
 		isNeg = !isNeg
-	} else if res > Fix64_Pi {
-		res = fix64_2Pi - res
+	} else if res > fix64_extra_Pi {
+		res = fix64_extra_2Pi - res
 		isNeg = !isNeg
 	}
 
@@ -795,13 +958,13 @@ func clampAngle(x Fix64) (res Fix64, isNeg bool) {
 
 func (x Fix64) Sin() (Fix64, error) {
 
-	x, isNeg := clampAngle(x)
+	// Normalize the input angle to the range [0, π], with a flag indicating
+	// if the result should be interpreted as negative.
+	x_extra, isNeg := clampAngle(x)
 
 	if x == 0 {
 		return 0, nil
 	}
-
-	x_extra := fixToExtra(x)
 
 	res := extraToFix(internalSin(x_extra, fix64_extra_Pi, fix64_extra_sinIota))
 
@@ -816,86 +979,111 @@ func (x Fix64) Sin() (Fix64, error) {
 func (x Fix64) Cos() (Fix64, error) {
 	if x == 0 {
 		return Fix64One, nil
-	} else {
-		x, _ := clampAngle(x)
-
-		// cos(x) = sin(π/2 - x)
-		y, _ := fix64_PiOver2.Sub(x)
-
-		return y.Sin()
 	}
+
+	// Ignore the sign since cos(-x) = cos(x)
+	x_extra, _ := clampAngle(x)
+
+	// We use the following identities to compute cos(x):
+	//     cos(x) = sin(π/2 - x)
+	//     cos(x) = -sin(3π/2 − x)
+	// If x is is less than or equal to π/2, we can use the first identity,
+	// if x is greater than π/2, we use the second identity.
+	// In both cases, we end up with a value in the range [0, π], to pass
+	// to internalSin().
+	var y_extra fix64_extra
+	var is_neg bool
+
+	if x_extra <= fix64_extra_PiOver2 {
+		// cos(x) = sin(π/2 - x)
+		y_extra = fix64_extra_PiOver2 - x_extra
+		is_neg = false
+	} else {
+		// cos(x) = -sin(3π/2 − x)
+		y_extra = fix64_extra_3PiOver2 - x_extra
+		is_neg = true
+	}
+
+	res := extraToFix(internalSin(y_extra, fix64_extra_Pi, fix64_extra_sinIota))
+
+	if is_neg {
+		res = res.Neg()
+	}
+
+	return res, nil
 }
 
 // Commented out because tan() is only of speculative value for smart contracts, and getting a bit-accurate value
 // is proving to be VERY complicated. Fundamentally, since tan(x) = sin(x)/cos(x), and cos(x) can be very small
 // the error in tan(x) can be very large, even if sin(x) and cos(x) are accurate to the last bit.
 
-// func (x Fix64) Tan() (Fix64, error) {
+func (x Fix64) Tan() (Fix64, error) {
 
-// 	sin_x, err := x.Sin()
-// 	if err != nil {
-// 		return 0, err
-// 	}
-// 	cos_x, err := x.Cos()
-// 	if err != nil {
-// 		return 0, err
-// 	}
+	sin_x, err := x.Sin()
+	if err != nil {
+		return 0, err
+	}
+	cos_x, err := x.Cos()
+	if err != nil {
+		return 0, err
+	}
 
-// 	return sin_x.Div(cos_x)
-// }
+	return sin_x.Div(cos_x)
+}
 
-// func (x Fix64) TanTest() (Fix64, error) {
-// 	// tan(x) = sin(x) / cos(x)
-// 	// We could just use the Sin() and Cos() methods directly, but we'll get better
-// 	// precision if we call the internalSin() function direclty and divide the result.
-// 	x, isNeg := clampAngle(x)
+func (x Fix64) TanTest() (Fix64, error) {
+	// tan(x) = sin(x) / cos(x)
+	// We could just use the Sin() and Cos() methods directly, but we'll get better
+	// precision if we call the internalSin() function direclty and divide the result.
 
-// 	// Let's check fo values that are very close to π/2 and -π/2, these values should
-// 	// return an overflow error since tan(x) is undefined for these values.
-// 	if x == fix64_PiOver2 {
-// 		if !isNeg {
-// 			// Remember that fix64_PiOver2 is actually an approximation of π/2, and slightly
-// 			// less. So we return a positive overflow error
-// 			return 0, ErrOverflow
-// 		} else {
-// 			// In this case, we're slightly more positively than -π/2, so we return a negative
-// 			// overflow error
-// 			return 0, ErrNegOverflow
-// 		}
-// 	}
+	// Normalize the input angle to the range [0, π]
+	x_extra, xNeg := clampAngle(x)
 
-// 	y, _ := fix64_PiOver2.Sub(x)
-// 	if y < 0 {
-// 		y = -y
-// 		isNeg = !isNeg
-// 	}
+	if x_extra == 0 {
+		return 0, nil
+	}
 
-// 	x_extra := fixToExtra(x)
-// 	y_extra := fixToExtra(y)
+	if x_extra == fix64_extra_PiOver2 {
+		if !xNeg {
+			// Remember that fix64_extra_PiOver2 is actually an approximation of π/2, and slightly
+			// less. So we return a positive overflow error
+			return 0, ErrOverflow
+		} else {
+			// In this case, we're slightly more positively than -π/2, so we return a negative
+			// overflow error
+			return 0, ErrNegOverflow
+		}
+	}
 
-// 	sinx_extra := internalSin(x_extra, fix64_extra_Pi, fix64_extra_Iota)
-// 	cosx_extra := internalSin(y_extra, fix64_extra_Pi, fix64_extra_Iota)
+	// We compute y the same way we did in the cos() function above.
+	var y_extra fix64_extra
+	var is_neg bool
 
-// 	// cos(x) = 1 - 2•sin²(x/2)
-// 	// sinx_half := internalSin(x_extra.intDiv(2))
-// 	// sinx_squared, _ := sinx_half.Mul(sinx_half)
-// 	// cosx_extra, _ := fix64_ExtraOne.Sub(sinx_squared.intMul(2))
+	if x_extra <= fix64_extra_PiOver2 {
+		// cos(x) = sin(π/2 - x)
+		y_extra = fix64_extra_PiOver2 - x_extra
+		is_neg = false
+	} else {
+		// cos(x) = -sin(3π/2 − x)
+		y_extra = fix64_extra_3PiOver2 - x_extra
+		is_neg = true
+	}
 
-// 	res_extra, err := sinx_extra.Div(cosx_extra)
+	sinX := internalSin(x_extra, fix64_extra_Pi, fix64_extra_sinIota)
+	cosX := internalSin(y_extra, fix64_extra_Pi, fix64_extra_sinIota)
 
-// 	if err != nil {
-// 		return 0, err
-// 	}
+	res_extra, err := sinX.Div(cosX)
 
-// 	res := extraToFix(res_extra)
+	if err != nil {
+		return 0, err
+	}
 
-// 	if isNeg {
-// 		// tan(-x) = -tan(x)
-// 		res = res.Neg()
-// 	}
+	if is_neg {
+		res_extra = res_extra.Neg()
+	}
 
-// 	return res, nil
-// }
+	return extraToFix(res_extra), nil
+}
 
 // func (x Fix64) TanTest2() (Fix64, error) {
 // 	// tan(x) = sin(x) / cos(x)
@@ -918,10 +1106,10 @@ func (x Fix64) Cos() (Fix64, error) {
 // 	}
 
 // 	x_extra := fixToExtra(x)
-// 	sinx_extra := internalSin(x_extra, fix64_extra_Pi, fix64_extra_Iota)
+// 	sinx_extra := internalSin(x_extra, fix64_extra_Pi, fix64_extra_sinIota)
 
 // 	// cos(x) = 1 - 2•sin²(x/2)
-// 	sinx_half := internalSin(x_extra.intDiv(2), fix64_extra_Pi, fix64_extra_Iota)
+// 	sinx_half := internalSin(x_extra.intDiv(2), fix64_extra_Pi, fix64_extra_sinIota)
 // 	sinx_squared, _ := sinx_half.Mul(sinx_half)
 // 	cosx_extra, _ := fix64_ExtraOne.Sub(sinx_squared.intMul(2))
 

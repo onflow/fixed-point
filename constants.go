@@ -3,35 +3,46 @@ package fixedPoint
 
 // Exported scale constants
 const Fix64Scale = 1E+8
+const UFix64One = UFix64(1 * Fix64Scale) // 1 in fix64
 const Fix64One = Fix64(1 * Fix64Scale) // 1 in fix64
+const UFix64Max = UFix64(0xffffffffffffffff) // Max value for UFix64
+const Fix64Max = Fix64(0x7fffffffffffffff) // Max value for Fix64
+const Fix64Min = Fix64(-0x8000000000000000) // Min value for Fix64
+
 const Fix128Scale = 1E+24 // NOTE: Bigger than uint64! Mostly here as documentation...
 var Fix128One = Fix128(raw128{0x000000000000d3c2, 0x1bcecceda1000000})
 
 // Internal scale constants
-const extraBits = 8 // Number of extra bits for fix64_extra and fix128_extra
-const fix64ExtraScale = Fix64Scale << extraBits // 2.56E+10
-const fix128ExtraScale = 2.56E+26 // NOTE: Bigger than uint64! Mostly here as documentation...
+const extraBits = 20 // Number of extra bits for fix64_extra and fix128_extra
+const fix64ExtraScale = Fix64Scale << extraBits // 1.048576E+14
+const fix128ExtraScale = 1.048576E+30 // NOTE: Bigger than uint64! Mostly here as documentation...
 
-// Fix64 transcendental constants
+// Fix64 transcendental constants (see constgen.py for more information)
 const Fix64_Pi = Fix64(0x12b9b0a1)
 const fix64_2Pi = Fix64(0x25736143)
 const fix64_PiOver2 = Fix64(0x95cd851)
 const fix64_3PiOver2 = Fix64(0x1c1688f2)
 const fix64_TwoPiShifted33 = uint64(0x4ae6c2856f98469f)
+const fix64_TwoPiMultiple = uint64(0x5f15fcd702525)
 
 // Fix128 transcendental constants
 var Fix128_Pi = Fix128(raw128{0x0000000000029942, 0x1439a0abd72cb0b3})
 var fix128_2Pi = Fix128(raw128{0x0000000000053284, 0x28734157ae596167})
 var fix128_PiOver2 = Fix128(raw128{0x0000000000014ca1, 0x0a1cd055eb96585a})
 var fix128_3PiOver2 = Fix128(raw128{0x000000000003e5e3, 0x1e567101c2c3090d})
-var fix128_TwoPiShifted44 = raw128(raw128{0x5328428734157ae5, 0x96166c43d36043ac})
 
-// fix64_extra transcendental constants
-const fix64_extra_Pi = fix64_extra(0x12b9b0a15c)
-const fix64_extra_2Pi = fix64_extra(0x25736142b8)
-const fix64_extra_PiOver2 = fix64_extra(0x95cd850ae)
-const fix64_extra_3PiOver2 = fix64_extra(0x1c1688f20a)
-const fix64_extra_sinIota = fix64_extra(0xf0d74d)
+// fix64_extra constants
+const fix64_extra_One = fix64_extra(0x5f5e10000000)
+const fix64_extra_Pi = fix64_extra(0x12b9b0a15be61)
+const fix64_extra_2Pi = fix64_extra(0x25736142b7cc2)
+const fix64_extra_PiOver2 = fix64_extra(0x95cd850adf31)
+const fix64_extra_3PiOver2 = fix64_extra(0x1c1688f209d92)
+const fix64_extra_sinIota = fix64_extra(0xf0d74d47)
+const fix64_extra_TwoPiMultiple = fix64_extra(0x43e12048ed2200)
 
-// ln(2) for fix64_extra
-const ln2_fix64_extra = int64(0x421a89e0e)
+// ln(2) * 1024 at fix64_extra precision, used in ln() and exp()
+const ln2_fix64_term = fix64_extra(0x421a89e0e55a857)
+
+// Valid logarithm bounds for Fix64
+const maxLn64 = Fix64(0x9a9e6d19)
+const minLn64 = Fix64(-0x71ed6308)

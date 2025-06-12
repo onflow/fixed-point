@@ -1,418 +1,731 @@
 package fixedPoint
 
 import (
+	"bufio"
+	"os/exec"
+	"strconv"
+	"strings"
 	"testing"
 )
 
+var errorMap = map[string]error{
+	"None":        nil,
+	"Overflow":    ErrOverflow,
+	"NegOverflow": ErrNegOverflow,
+	"Underflow":   ErrUnderflow,
+	"DivByZero":   ErrDivByZero,
+	"DomainError": ErrDomain,
+}
+
+type OneArgTestCase struct {
+	A           uint64
+	Expected    uint64
+	err         error
+	Description string
+}
+
+type TwoArgTestCase struct {
+	A           uint64
+	B           uint64
+	Expected    uint64
+	err         error
+	Description string
+}
+
+type ThreeArgTestCase struct {
+	A           uint64
+	B           uint64
+	C           uint64
+	Expected    uint64
+	err         error
+	Description string
+}
+
+type TestState struct {
+	opType       string
+	operation    string
+	successCount int
+	failureCount int
+}
+
+// A useful function to debug a specific test case. You can just copy/paste the test case values
+// from a failing test's log output into this function and then debug it.
+func TestDebugOneArgTestCase(t *testing.T) {
+
+	tc := OneArgTestCase{
+		A:        0x000000006df37f68,
+		Expected: 0x0024771b9760d89c,
+		err:      nil,
+	}
+
+	a := Fix64(tc.A)
+	res, err := a.ExpTest()
+
+	// Used for debugging clampAngle
+	// err := error(nil)
+	// if neg {
+	// 	res = res.Neg()
+	// }
+
+	var errorAmount uint64 = 0
+
+	if uint64(res) > tc.Expected {
+		errorAmount = uint64(res) - tc.Expected
+	} else {
+		errorAmount = tc.Expected - uint64(res)
+	}
+
+	t.Logf("(0x%016x) = 0x%016x, %v; want 0x%016x, %v (±%d)",
+		tc.A, uint64(res), err, tc.Expected, tc.err, errorAmount)
+}
+
+func TestDebugTwoArgTestCase(t *testing.T) {
+	t.Skip()
+
+	tc := TwoArgTestCase{
+		A:        0x0000000005f5e0ff,
+		B:        0x0000000000000001,
+		Expected: 0x0000000000000001,
+		err:      nil,
+	}
+
+	a := UFix64(tc.A)
+	b := UFix64(tc.B)
+	res, err := a.Mul(b)
+
+	var errorAmount uint64 = 0
+
+	if uint64(res) > tc.Expected {
+		errorAmount = uint64(res) - tc.Expected
+	} else {
+		errorAmount = tc.Expected - uint64(res)
+	}
+
+	t.Logf("(0x%016x, 0x%016x) = 0x%016x, %v; want 0x%016x, %v (±%d)",
+		tc.A, tc.B, res, err, tc.Expected, tc.err, errorAmount)
+}
+
+// This line is used to tell the Go toolchain that the code in this file depends the Python scripts
+//go:generate sh -c "stat generators/add64.py > /dev/null"
+//go:generate sh -c "stat generators/data.py > /dev/null"
+
+func OneArgTestChannel(t *testing.T, valType string, operation string) chan OneArgTestCase {
+	cmd := exec.Command("uv", "run", "add64.py", valType, operation)
+	cmd.Dir = "./generators"
+
+	// Get a pipe to Python's stdout
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	ch := make(chan OneArgTestCase)
+
+	go func() {
+		defer close(ch)
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			line = strings.TrimPrefix(line, "(")
+			line = strings.TrimSuffix(line, ")")
+
+			parts := strings.Split(line, ", ")
+			if len(parts) != 4 {
+				t.Log("Unexpected data format from Python script: ", line)
+				t.Fail()
+			}
+
+			a, _ := strconv.ParseUint(parts[0], 0, 64)
+			expected, _ := strconv.ParseUint(parts[1], 0, 64)
+			errorString := parts[2]
+			message := strings.Trim(parts[3], "\"")
+
+			ch <- OneArgTestCase{
+				A:           a,
+				Expected:    expected,
+				err:         errorMap[errorString],
+				Description: message,
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			t.Log(err)
+			t.Fail()
+		}
+	}()
+
+	return ch
+}
+
+func TwoArgTestChannel(t *testing.T, valType string, operation string) chan TwoArgTestCase {
+	cmd := exec.Command("uv", "run", "add64.py", valType, operation)
+	cmd.Dir = "./generators"
+
+	// Get a pipe to Python's stdout
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	ch := make(chan TwoArgTestCase)
+
+	go func() {
+		defer close(ch)
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			line = strings.TrimPrefix(line, "(")
+			line = strings.TrimSuffix(line, ")")
+
+			parts := strings.Split(line, ", ")
+			if len(parts) != 5 {
+				t.Log("Unexpected data format from Python script: ", line)
+				t.Fail()
+			}
+
+			a, _ := strconv.ParseUint(parts[0], 0, 64)
+			b, _ := strconv.ParseUint(parts[1], 0, 64)
+			expected, _ := strconv.ParseUint(parts[2], 0, 64)
+			errorString := parts[3]
+			message := strings.Trim(parts[4], "\"")
+
+			ch <- TwoArgTestCase{
+				A:           a,
+				B:           b,
+				Expected:    expected,
+				err:         errorMap[errorString],
+				Description: message,
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			t.Log(err)
+			t.Fail()
+		}
+	}()
+
+	return ch
+}
+
+func ThreeArgTestChannel(t *testing.T, valType string, operation string) chan ThreeArgTestCase {
+	cmd := exec.Command("uv", "run", "add64.py", valType, operation)
+	cmd.Dir = "./generators"
+
+	// Get a pipe to Python's stdout
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	ch := make(chan ThreeArgTestCase)
+
+	go func() {
+		defer close(ch)
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			line = strings.TrimPrefix(line, "(")
+			line = strings.TrimSuffix(line, ")")
+
+			parts := strings.Split(line, ", ")
+			if len(parts) != 6 {
+				t.Log("Unexpected data format from Python script: ", line)
+				t.Fail()
+			}
+
+			a, _ := strconv.ParseUint(parts[0], 0, 64)
+			b, _ := strconv.ParseUint(parts[1], 0, 64)
+			c, _ := strconv.ParseUint(parts[2], 0, 64)
+			expected, _ := strconv.ParseUint(parts[3], 0, 64)
+			errorString := parts[4]
+			message := strings.Trim(parts[5], "\"")
+
+			ch <- ThreeArgTestCase{
+				A:           a,
+				B:           b,
+				C:           c,
+				Expected:    expected,
+				err:         errorMap[errorString],
+				Description: message,
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			t.Log(err)
+			t.Fail()
+		}
+	}()
+
+	return ch
+}
+
+func OneArgResultCheck(t *testing.T, ts *TestState, tc OneArgTestCase, actualResult uint64, actualErr error) bool {
+	success := true
+
+	if tc.err != nil || actualErr != nil {
+		if actualErr != tc.err {
+			t.Errorf("%s (0x%016x) returned error: %v, want: %v (%s)",
+				ts.operation+ts.opType, tc.A, actualErr, tc.err, tc.Description)
+			success = false
+		}
+	} else if actualResult != tc.Expected {
+		var errorAmount uint64
+
+		if actualResult > tc.Expected {
+			errorAmount = actualResult - tc.Expected
+		} else {
+			errorAmount = tc.Expected - actualResult
+		}
+
+		t.Errorf("%s (0x%016x) = 0x%016x, want 0x%016x (±%d) (%s)",
+			ts.operation+ts.opType, tc.A, actualResult, tc.Expected, errorAmount, tc.Description)
+
+		success = false
+	}
+
+	if success {
+		ts.successCount++
+	} else {
+		ts.failureCount++
+	}
+
+	if ts.failureCount >= 10 {
+		t.Log("Too many failures, stopping test early")
+		t.FailNow()
+	}
+
+	return true
+}
+
+func TwoArgResultCheck(t *testing.T, ts *TestState, tc TwoArgTestCase, actualResult uint64, actualErr error) bool {
+	success := true
+
+	if tc.err != nil || actualErr != nil {
+		if actualErr != tc.err {
+			t.Errorf("%s (0x%016x, 0x%016x) returned error: %v, want: %v (%s)",
+				ts.operation+ts.opType, tc.A, tc.B, actualErr, tc.err, tc.Description)
+			success = false
+		}
+	}
+
+	if actualResult != tc.Expected {
+		var errorAmount uint64
+
+		if actualResult > tc.Expected {
+			errorAmount = actualResult - tc.Expected
+		} else {
+			errorAmount = tc.Expected - actualResult
+		}
+
+		t.Errorf("%s (0x%016x, 0x%016x) = 0x%016x, want 0x%016x (±%d) (%s)",
+			ts.operation+ts.opType, tc.A, tc.B, actualResult, tc.Expected, errorAmount, tc.Description)
+		success = false
+	}
+
+	if success {
+		ts.successCount++
+	} else {
+		ts.failureCount++
+	}
+
+	if ts.failureCount >= 10 {
+		t.Log("Too many failures, stopping test early")
+		t.FailNow()
+	}
+
+	return true
+}
+
+func ThreeArgResultCheck(t *testing.T, ts *TestState, tc ThreeArgTestCase, actualResult uint64, actualErr error) bool {
+	success := true
+
+	if tc.err != nil || actualErr != nil {
+		if actualErr != tc.err {
+			t.Errorf("%s (0x%016x, 0x%016x, 0x%016x) returned error: %v, want: %v (%s)",
+				ts.operation+ts.opType, tc.A, tc.B, tc.C, actualErr, tc.err, tc.Description)
+			success = false
+		}
+	}
+
+	if actualResult != tc.Expected {
+		var errorAmount uint64
+
+		if actualResult > tc.Expected {
+			errorAmount = actualResult - tc.Expected
+		} else {
+			errorAmount = tc.Expected - actualResult
+		}
+
+		t.Errorf("%s (0x%016x, 0x%016x, 0x%016x) = 0x%016x, want 0x%016x (±%d) (%s)",
+			ts.operation+ts.opType, tc.A, tc.B, tc.C, actualResult, tc.Expected, errorAmount, tc.Description)
+		success = false
+	}
+
+	if success {
+		ts.successCount++
+	} else {
+		ts.failureCount++
+	}
+
+	if ts.failureCount >= 10 {
+		t.Log("Too many failures, stopping test early")
+		t.FailNow()
+	}
+
+	return true
+}
+
 func TestAddUFix64(t *testing.T) {
-	for i, tc := range AddUFix64Tests {
+	testState := &TestState{
+		opType:       "UFix64",
+		operation:    "Add",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel(t, testState.opType, testState.operation) {
 		a := UFix64(tc.A)
 		b := UFix64(tc.B)
-		expected := UFix64(tc.Expected)
 		res, err := a.Add(b)
-		if err != nil {
-			t.Errorf("AddUFix64(0x%016x, 0x%016x) (%d) returned error: %v", tc.A, tc.B, i, err)
-			continue
-		}
-		if res != expected {
-			t.Errorf("AddUFix64(0x%016x, 0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, tc.B, res, i, expected)
-		}
+
+		TwoArgResultCheck(t, testState, tc, uint64(res), err)
 	}
-	for _, tc := range AddUFix64OverflowTests {
-		a := UFix64(tc.A)
-		b := UFix64(tc.B)
-		_, err := a.Add(b)
-		if err != ErrOverflow {
-			t.Errorf("AddUFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestAddFix64(t *testing.T) {
-	for i, tc := range AddFix64Tests {
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "Add",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel(t, testState.opType, testState.operation) {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
-		expected := Fix64(tc.Expected)
 		res, err := a.Add(b)
-		if err != nil {
-			t.Errorf("AddFix64(0x%016x, 0x%016x) (%d) returned error: %v", tc.A, tc.B, i, err)
-			continue
-		}
-		if res != expected {
-			t.Errorf("AddFix64(0x%016x, 0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, tc.B, res, i, expected)
-		}
+
+		TwoArgResultCheck(t, testState, tc, uint64(res), err)
 	}
-	for _, tc := range AddFix64OverflowTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Add(b)
-		if err != ErrOverflow {
-			t.Errorf("AddFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
-	for _, tc := range AddFix64NegOverflowTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Add(b)
-		if err != ErrNegOverflow {
-			t.Errorf("AddFix64(0x%016x, 0x%016x) expected negative overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestSubUFix64(t *testing.T) {
-	for i, tc := range SubUFix64Tests {
+	testState := &TestState{
+		opType:       "UFix64",
+		operation:    "Sub",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel(t, testState.opType, testState.operation) {
 		a := UFix64(tc.A)
 		b := UFix64(tc.B)
-		expected := UFix64(tc.Expected)
 		res, err := a.Sub(b)
-		if err != nil {
-			t.Errorf("SubUFix64(0x%016x, 0x%016x) (%d) returned error: %v", tc.A, tc.B, i, err)
-			continue
-		}
-		if res != expected {
-			t.Errorf("SubUFix64(0x%016x, 0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, tc.B, res, i, expected)
-		}
+
+		TwoArgResultCheck(t, testState, tc, uint64(res), err)
 	}
-	for _, tc := range SubUFix64NegOverflowTests {
-		a := UFix64(tc.A)
-		b := UFix64(tc.B)
-		_, err := a.Sub(b)
-		if err != ErrNegOverflow {
-			t.Errorf("SubUFix64(0x%016x, 0x%016x) expected negative overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestSubFix64(t *testing.T) {
-	for i, tc := range SubFix64Tests {
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "Sub",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel(t, testState.opType, testState.operation) {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
-		expected := Fix64(tc.Expected)
 		res, err := a.Sub(b)
-		if err != nil {
-			t.Errorf("SubFix64(0x%016x, 0x%016x) (%d) returned error: %v", tc.A, tc.B, i, err)
-			continue
-		}
-		if res != expected {
-			t.Errorf("SubFix64(0x%016x, 0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, tc.B, res, i, expected)
-		}
+
+		TwoArgResultCheck(t, testState, tc, uint64(res), err)
 	}
-	for _, tc := range SubFix64OverflowTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Sub(b)
-		if err != ErrOverflow {
-			t.Errorf("SubFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
-	for _, tc := range SubFix64NegOverflowTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Sub(b)
-		if err != ErrNegOverflow {
-			t.Errorf("SubFix64(0x%016x, 0x%016x) expected negative overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestMulUFix64(t *testing.T) {
-	for i, tc := range MulUFix64Tests {
+	testState := &TestState{
+		opType:       "UFix64",
+		operation:    "Mul",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel(t, testState.opType, testState.operation) {
 		a := UFix64(tc.A)
 		b := UFix64(tc.B)
-		expected := UFix64(tc.Expected)
 		res, err := a.Mul(b)
-		if err != nil {
-			t.Errorf("MulUFix64(0x%016x, 0x%016x) (%d) returned error: %v", tc.A, tc.B, i, err)
-			continue
-		}
-		if res != expected {
-			t.Errorf("MulUFix64(0x%016x, 0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, tc.B, res, i, expected)
-		}
+
+		TwoArgResultCheck(t, testState, tc, uint64(res), err)
 	}
-	for _, tc := range MulUFix64OverflowTests {
-		a := UFix64(tc.A)
-		b := UFix64(tc.B)
-		_, err := a.Mul(b)
-		if err != ErrOverflow {
-			t.Errorf("MulUFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
-	for _, tc := range MulUFix64UnderflowTests {
-		a := UFix64(tc.A)
-		b := UFix64(tc.B)
-		_, err := a.Mul(b)
-		if err != ErrUnderflow {
-			t.Errorf("MulUFix64(0x%016x, 0x%016x) expected underflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestMulFix64(t *testing.T) {
-	for i, tc := range MulFix64Tests {
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "Mul",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel(t, testState.opType, testState.operation) {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
-		expected := Fix64(tc.Expected)
 		res, err := a.Mul(b)
-		if err != nil {
-			t.Errorf("MulFix64(0x%016x, 0x%016x) (%d) returned error: %v", tc.A, tc.B, i, err)
-			continue
-		}
-		if res != expected {
-			t.Errorf("MulFix64(0x%016x, 0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, tc.B, res, i, expected)
-		}
+
+		TwoArgResultCheck(t, testState, tc, uint64(res), err)
 	}
-	for _, tc := range MulFix64OverflowTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Mul(b)
-		if err != ErrOverflow {
-			t.Errorf("MulFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
-	for _, tc := range MulFix64NegOverflowTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Mul(b)
-		if err != ErrNegOverflow {
-			t.Errorf("MulFix64(0x%016x, 0x%016x) expected negative overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
-	for _, tc := range MulFix64UnderflowTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Mul(b)
-		if err != ErrUnderflow {
-			t.Errorf("MulFix64(0x%016x, 0x%016x) expected underflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestDivUFix64(t *testing.T) {
-	for i, tc := range DivUFix64Tests {
+	testState := &TestState{
+		opType:       "UFix64",
+		operation:    "Div",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel(t, testState.opType, testState.operation) {
 		a := UFix64(tc.A)
 		b := UFix64(tc.B)
-		expected := UFix64(tc.Expected)
 		res, err := a.Div(b)
-		if err != nil {
-			t.Errorf("DivUFix64(0x%016x, 0x%016x) (%d) returned error: %v", tc.A, tc.B, i, err)
-			continue
-		}
-		if res != expected {
-			t.Errorf("DivUFix64(0x%016x, 0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, tc.B, res, i, expected)
-		}
+
+		TwoArgResultCheck(t, testState, tc, uint64(res), err)
 	}
-	for _, tc := range DivUFix64OverflowTests {
-		a := UFix64(tc.A)
-		b := UFix64(tc.B)
-		_, err := a.Div(b)
-		if err != ErrOverflow {
-			t.Errorf("DivUFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
-	for _, tc := range DivUFix64UnderflowTests {
-		a := UFix64(tc.A)
-		b := UFix64(tc.B)
-		_, err := a.Div(b)
-		if err != ErrUnderflow {
-			t.Errorf("DivUFix64(0x%016x, 0x%016x) expected underflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
-	for _, tc := range DivUFix64DivByZeroTests {
-		a := UFix64(tc.A)
-		b := UFix64(tc.B)
-		_, err := a.Div(b)
-		if err != ErrDivByZero {
-			t.Errorf("DivUFix64(0x%016x, 0x%016x) expected div by zero error, got: %v", tc.A, tc.B, err)
-		}
-	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestDivFix64(t *testing.T) {
-	for i, tc := range DivFix64Tests {
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "Div",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel(t, testState.opType, testState.operation) {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
-		expected := Fix64(tc.Expected)
 		res, err := a.Div(b)
-		if err != nil {
-			t.Errorf("DivFix64(0x%016x, 0x%016x) (%d) returned error: %v", tc.A, tc.B, i, err)
-			continue
-		}
-		if res != expected {
-			t.Errorf("DivFix64(0x%016x, 0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, tc.B, res, i, expected)
-		}
+
+		TwoArgResultCheck(t, testState, tc, uint64(res), err)
 	}
-	for _, tc := range DivFix64OverflowTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Div(b)
-		if err != ErrOverflow {
-			t.Errorf("DivFix64(0x%016x, 0x%016x) expected overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
-	for _, tc := range DivFix64NegOverflowTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Div(b)
-		if err != ErrNegOverflow {
-			t.Errorf("DivFix64(0x%016x, 0x%016x) expected negative overflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
-	for _, tc := range DivFix64UnderflowTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Div(b)
-		if err != ErrUnderflow {
-			t.Errorf("DivFix64(0x%016x, 0x%016x) expected underflow error, got: %v", tc.A, tc.B, err)
-		}
-	}
-	for _, tc := range DivFix64DivByZeroTests {
-		a := Fix64(tc.A)
-		b := Fix64(tc.B)
-		_, err := a.Div(b)
-		if err != ErrDivByZero {
-			t.Errorf("DivFix64(0x%016x, 0x%016x) expected div by zero error, got: %v", tc.A, tc.B, err)
-		}
-	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestFMDUFix64(t *testing.T) {
-	for i, tc := range FMDUFix64Tests {
+	testState := &TestState{
+		opType:       "UFix64",
+		operation:    "FMD",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range ThreeArgTestChannel(t, testState.opType, testState.operation) {
 		a := UFix64(tc.A)
 		b := UFix64(tc.B)
 		c := UFix64(tc.C)
-		expected := UFix64(tc.Expected)
 		res, err := a.FMD(b, c)
-		if err != nil {
-			t.Errorf("FMDUFix64(0x%016x, 0x%016x, 0x%016x) (%d) returned error: %v", tc.A, tc.B, tc.C, i, err)
-			continue
-		}
-		if res != expected {
-			t.Errorf("FMDUFix64(0x%016x, 0x%016x, 0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, tc.B, tc.C, res, i, expected)
-		}
+
+		ThreeArgResultCheck(t, testState, tc, uint64(res), err)
 	}
-	for i, tc := range FMDUFix64OverflowTests {
-		a := UFix64(tc.A)
-		b := UFix64(tc.B)
-		c := UFix64(tc.C)
-		_, err := a.FMD(b, c)
-		if err != ErrOverflow {
-			t.Errorf("FMDUFix64(0x%016x, 0x%016x, 0x%016x) (%d) expected overflow error, got: %v", tc.A, tc.B, tc.C, i, err)
-		}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestFMDFix64(t *testing.T) {
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "FMD",
+		successCount: 0,
+		failureCount: 0,
 	}
-	for i, tc := range FMDUFix64UnderflowTests {
-		a := UFix64(tc.A)
-		b := UFix64(tc.B)
-		c := UFix64(tc.C)
-		_, err := a.FMD(b, c)
-		if err != ErrUnderflow {
-			t.Errorf("FMDUFix64(0x%016x, 0x%016x, 0x%016x) (%d) expected underflow error, got: %v", tc.A, tc.B, tc.C, i, err)
-		}
+
+	t.Parallel()
+
+	for tc := range ThreeArgTestChannel(t, testState.opType, testState.operation) {
+		a := Fix64(tc.A)
+		b := Fix64(tc.B)
+		c := Fix64(tc.C)
+		res, err := a.FMD(b, c)
+
+		ThreeArgResultCheck(t, testState, tc, uint64(res), err)
 	}
-	for _, tc := range FMDUFix64DivByZeroTests {
-		a := UFix64(tc.A)
-		b := UFix64(tc.B)
-		c := UFix64(tc.C)
-		_, err := a.FMD(b, c)
-		if err != ErrDivByZero {
-			t.Errorf("FMDUFix64(0x%016x, 0x%016x, 0x%016x) expected div by zero error, got: %v", tc.A, tc.B, tc.C, err)
-		}
-	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestSqrtUFix64(t *testing.T) {
-	for i, tc := range SqrtUFix64Tests {
-		a := UFix64(tc.A)
-		expected := UFix64(tc.Expected)
-		res, err := a.Sqrt()
-		if err != nil {
-			t.Errorf("SqrtUFix64(0x%016x) (%d) returned error: %v", tc.A, i, err)
-			continue
-		}
-		if res != expected {
-			t.Errorf("SqrtUFix64(0x%016x) = 0x%016x (%d), want 0x%016x", tc.A, res, i, expected)
-		}
+	testState := &TestState{
+		opType:       "UFix64",
+		operation:    "Sqrt",
+		successCount: 0,
+		failureCount: 0,
 	}
+
+	t.Parallel()
+
+	for tc := range OneArgTestChannel(t, testState.opType, testState.operation) {
+		a := UFix64(tc.A)
+		res, err := a.Sqrt()
+
+		OneArgResultCheck(t, testState, tc, uint64(res), err)
+	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
-func TestLnUFix64(t *testing.T) {
-	for i, tc := range LnUFix64Tests {
-		a := UFix64(tc.A)
-		expected := Fix64(tc.Expected)
-		res, err := a.Ln()
-		if err != nil {
-			t.Errorf("LnFix64(0x%016x) (%d) returned error: %v", tc.A, i, err)
-			continue
-		}
-		diff, _ := res.Sub(expected)
-		diff = diff.Abs()
-
-		if res != expected {
-			t.Errorf("LnFix64(0x%016x) = 0x%016x (%d), want 0x%016x (±%d)", tc.A, res, i, expected, diff)
-		}
+func TestLnFix64(t *testing.T) {
+	testState := &TestState{
+		opType:       "UFix64",
+		operation:    "Ln",
+		successCount: 0,
+		failureCount: 0,
 	}
+
+	t.Parallel()
+
+	for tc := range OneArgTestChannel(t, testState.opType, testState.operation) {
+		a := UFix64(tc.A)
+		res, err := a.Ln()
+
+		OneArgResultCheck(t, testState, tc, uint64(res), err)
+	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestExpFix64(t *testing.T) {
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "Exp",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range OneArgTestChannel(t, testState.opType, testState.operation) {
+		a := Fix64(tc.A)
+		res, err := a.ExpTest()
+
+		OneArgResultCheck(t, testState, tc, uint64(res), err)
+	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+// It turns out that for sin, cos, and tan, simply normalizing the input angle into
+// the range [-π, π] is a huge potential source of error. We can test this function
+// separately, to make sure we aren't introducing errors before we even get to the
+// core sin/cos calculations.
+func TestClampFix64(t *testing.T) {
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "Clamp",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range OneArgTestChannel(t, testState.opType, testState.operation) {
+		a := Fix64(tc.A)
+		res, neg := clampAngle(a)
+
+		if neg {
+			res = res.Neg()
+		}
+
+		OneArgResultCheck(t, testState, tc, uint64(res), nil)
+	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestSinFix64(t *testing.T) {
-	for i, tc := range SinFix64Tests {
-		a := Fix64(tc.A)
-		expected := Fix64(tc.Expected)
-		res, err := a.Sin()
-		diff, _ := res.Sub(expected)
-		diff = diff.Abs()
-		if err != nil {
-			t.Errorf("SinFix64(0x%016x) (%d) returned error: %v", tc.A, i, err)
-			continue
-		}
-		// We accept minimal error in the lowest digit
-		if diff > 0 {
-			t.Errorf("SinFix64(0x%016x) = 0x%016x (%d), want 0x%016x (±%d)", tc.A, res, i, expected, diff)
-		}
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "Sin",
+		successCount: 0,
+		failureCount: 0,
 	}
+
+	t.Parallel()
+
+	for tc := range OneArgTestChannel(t, testState.opType, testState.operation) {
+		a := Fix64(tc.A)
+		res, err := a.Sin()
+
+		OneArgResultCheck(t, testState, tc, uint64(res), err)
+	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestCosFix64(t *testing.T) {
-	for i, tc := range CosFix64Tests {
-		a := Fix64(tc.A)
-		expected := Fix64(tc.Expected)
-		res, err := a.Cos()
-		diff, _ := res.Sub(expected)
-		diff = diff.Abs()
-		if err != nil {
-			t.Errorf("CosFix64(0x%016x) (%d) returned error: %v", tc.A, i, err)
-			continue
-		}
-		// We accept minimal error in the lowest digit
-		if diff > 1 {
-			t.Errorf("CosFix64(0x%016x) = 0x%016x (%d), want 0x%016x (±%d)", tc.A, res, i, expected, diff)
-		}
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "Cos",
+		successCount: 0,
+		failureCount: 0,
 	}
+
+	t.Parallel()
+
+	for tc := range OneArgTestChannel(t, testState.opType, testState.operation) {
+		a := Fix64(tc.A)
+		res, err := a.Cos()
+
+		OneArgResultCheck(t, testState, tc, uint64(res), err)
+	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
-// Commented out because tan() is only of speculative value for smart contracts, and getting a bit-accurate value
-// is proving to be VERY complicated. Fundamentally, since tan(x) = sin(x)/cos(x), and cos(x) can be very small
-// the error in tan(x) can be very large, even if sin(x) and cos(x) are accurate to the last bit.
+func TestTanFix64(t *testing.T) {
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "Tan",
+		successCount: 0,
+		failureCount: 0,
+	}
 
-// func TestTanFix64(t *testing.T) {
-// 	for i, tc := range TanFix64Tests {
-// 		a := Fix64(tc.A)
-// 		expected := Fix64(tc.Expected)
-// 		res, err := a.TanTest()
-// 		diff, _ := res.Sub(expected)
-// 		diff = diff.Abs()
-// 		if err != nil {
-// 			t.Errorf("TanFix64(0x%016x) (%d) returned error: %v", tc.A, i, err)
-// 			continue
-// 		}
-// 		if diff > 1 {
-// 			t.Errorf("TanFix64(0x%016x) = 0x%016x (%d), want 0x%016x (±%d)", tc.A, res, i, expected, diff)
-// 		}
-// 	}
-// 	for _, tc := range TanFix64OverflowTests {
-// 		a := Fix64(tc.A)
-// 		_, err := a.Tan()
-// 		if err != ErrOverflow {
-// 			t.Errorf("TanFix64(0x%016x) expected overflow error, got: %v", tc.A, err)
-// 		}
-// 	}
-// }
+	t.Parallel()
+
+	for tc := range OneArgTestChannel(t, testState.opType, testState.operation) {
+		a := Fix64(tc.A)
+		res, err := a.TanTest()
+
+		OneArgResultCheck(t, testState, tc, uint64(res), err)
+	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
+}

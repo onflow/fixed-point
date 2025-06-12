@@ -1,433 +1,189 @@
 # add64.py
 # Generates Go test data for UFix64 and Fix64 addition (including overflow)
 
-from decimal import Decimal, getcontext
-from utils import to_ufix64, to_fix64, go_hex64, FIX64_SCALE, MASK64, parseInput64
+from decimal import Decimal, getcontext, InvalidOperation, Overflow
+#from utils import to_ufix64, to_fix64, go_hex64, FIX64_SCALE, MASK64, parseInput64
+from data64 import *
+import itertools
+import sys
+import inspect
+import mpmath
 
-getcontext().prec = 50
+getcontext().prec = 100
+mpmath.mp.dps = 100
 
-UFix64TestValues = [
-    # Simple cases
-    "0",
-    "1",
-    "5",
+extraBits = 16  # The number of extra bits used in fix64_extra
 
-    # Common repeating decimals
-    "0.111111111",  # 1/9
-    "0.333333333",  # 1/3
-    "0.666666666",  # 2/3
-    "0.142857142",  # 1/7
-    "0.285714285",  # 2/7
+decPi = Decimal(str(mpmath.pi))  # Pi to 100 decimal places
 
-    # The smallest non-zero values
-    # The code that consumes this list also generages values that
-    # are ± 1e-8, adding these two cases (on top of zero) results in
-    # the 10th "smallest" values.
-    "3e-8",
-    "6e-8",
-    "9e-8",
+def hex64(val):
+    """Convert a Decimal value to a hexadecimal string representation for a 64-bit type."""
+    n = int((val * 10**8).quantize(1, rounding='ROUND_HALF_UP')) & 0xFFFFFFFFFFFFFFFF
+    return f"0x{n:016x}"
 
-    # Random cases
-    "123.45678901",
-    "456.78901234",
-    "0.00012345",
-    "0.00045678",
-    "98765.4321",
-    "31415.9265",
-    "27182.8182",
-    "1234567890.12345678",
+def decSin(x: Decimal) -> Decimal:
+    return Decimal(str(mpmath.sin(mpmath.mpf(str(x)))))
 
-    # Powers of ten
-    # "1e-8", # generated above
-    # "1e-7", # generated above
-    "1e-6",
-    "1e-5",
-    "1e-4",
-    "1e-3",
-    "1e-2",
-    "1e-1",
-    "1e1",
-    "1e2",
-    "1e3",
-    "1e4",
-    "1e5",
-    "1e6",
-    "1e7",
-    "1e8",
-    "1e9",
-    "1e10",
-    "1e11",
+def decCos(x: Decimal) -> Decimal:
+    return Decimal(str(mpmath.cos(mpmath.mpf(str(x)))))
 
-    # Powers of 2
-    "0.00390625",
-    "0.0078125",
-    "0.015625",
-    "0.03125",
-    "0.0625",
-    "0.125",
-    "0.25",
-    "0.5",
-    "2",
-    "4",
-    "8",
-    "16",
-    "32",
-    "64",
-    "128",
-    "256",
-    "512",
-    "1024",
-    "1048576",  # 2^20
-    "1073741824",  # 2^30
-    "137438953472", # 2^37
+def decTan(x: Decimal) -> Decimal:
+    return Decimal(str(mpmath.tan(mpmath.mpf(str(x)))))
 
-    # The prime factors of UINT64_MAX are 3, 5, 17, 257, 641, 65537, and 6700417
-    # The values below are different subsets of those numbers multipled together to
-    # create values for which some pairs should multiply to exactly UFix64Max.
-    "3",
-    "15",
-    "4391.25228929",
-    "27530.74036095",
-    "65535",
-    "6700417",
-    "2814792.71743489",
-    "42007935",
-    "12297829382.47303441",
-    "61489146912.36517205",
+def decClamp(x: Decimal) -> Decimal:
+    """ Normalize a Decimal value to the range of (-π, π)."""
 
-    # sqrt(MaxUFix64) and nearby values
-    "429496.7296",
-    "429496.72959998",
-    "429496.72960002",
+    # start by reducing x to the range of [0, 2π)
+    x = x % (decPi * 2)
 
-    # sqrt(HalfMaxUFix64) and sqrt(MaxFix64) and nearby values
-    "303700.04999760",
-    "303700.04999758",
-    "303700.04999762",
+    if x < 0:
+        # if x is negative, add 2π to bring it into the range [0, 2π)
+        x += decPi * 2
 
-    # MaxUFix64 divided by powers of ten
-    "184467440737.09551615",
-    "18446744073.70955161",
-    "1844674407.37095516",
-    "184467440.73709552",
-    "18446744.07370955",
-    "1844674.40737096",
-    "184467.44073710",
-    "18446.74407370",
-    "1844.67440737",
-    "184.46744074",
-    "18.44674407",
-    "1.84467441",
+    # remove an extra 2π if x is greater than π
+    if x > decPi:
+        x -= decPi * 2
 
-    # MaxFix64 divided by powers of ten
-    "92233720368.54775807",
-    "9223372036.85477581",
-    "922337203.68547758",
-    "92233720.36854776",
-    "9223372.03685478",
-    "922337.20368548",
-    "92233.72036855",
-    "9223.37203685",
-    "922.33720369",
-    "92.23372037",
-    "9.22337204",
+    # The clamp function in Go actually returns a fix64_extra value, so we multiply
+    # by 2**12 to match that scale.
+    x = x * Decimal(2**extraBits)
 
-    # Trigonometric values
-    "0.52359878",   # pi/6
-    "0.78539816",   # pi/4
-    "1.04719755",   # pi/3
-    "1.57079633",   # pi/2
-    "3.14159265",   # pi
-    "4.71238898",   # 3*pi/2
-    "6.28318531",   # 2*pi
-    "2.35619449",   # 3*pi/4
-    "1.41421356",   # sqrt(2)
-    "0.70710678",   # sqrt(2) / 2
+    return x
 
-    # Logarithmic values
-    "0.69314718",   # ln(2)
-    "2.302585092",  # ln(10)
-    "2.71828183",   # e
-    "7.38905610",   # e^2
+operations = {
+    "Add": (lambda a, b: a + b, "{} + {} = {}"),
+    "Sub": (lambda a, b: a - b, "{} - {} = {}"),
+    "Mul": (lambda a, b: a * b, "{} * {} = {}"),
+    "Div": (lambda a, b: a / b, "{} / {} = {}"),
+    "FMD": (lambda a, b, c: a * b / c, "{} * {} / {} = {}"),
+    "Sqrt": (lambda a: a.sqrt(), "sqrt({}) = {}"),
+    "Ln": (lambda a: a.ln(), "ln({}) = {}"),
+    "Exp": (lambda a: a.exp(), "exp({}) = {}"),
+    "Clamp": (lambda a: decClamp(a), "clamp({}) = {}"),
+    "Sin": (lambda a: decSin(a), "sin({}) = {}"),
+    "Cos": (lambda a: decCos(a), "cos({}) = {}"),
+    "Tan": (lambda a: decTan(a), "tan({}) = {}"),
+}
 
-    # Near the limits
-    "MaxUFix64",
-    "MaxUFix64 - 1",
-    "HalfMaxUFix64",
-    "HalfMaxUFix64 + 1",
-    "HalfMaxUFix64 - 1",
-]
-
-AddUFix64Tests = [
-    # Simple cases
-    ("1.0", "1.0"),
-    ("1.0", "0.0"),
-    ("0.0", "0.0"),
-    ("0.0", "1.0"),
-    ("1.0", "1e8"),
-    ("1.0", "100000001.0"),
-
-    # Random cases
-    ("123.456", "789.012"),
-    ("456.789", "123.456"),
-    ("0.000123", "0.000456"),
-    ("0.000789", "0.000321"),
-    ("98765.4321", "12345.6789"),
-    ("31415.9265", "27182.8182"),
-    ("27182.8182", "31415.9265"),
-    ("1.23456789", "0.98765432"),
-    ("0.99999999", "0.00000001"),
-
-    # Edge cases (upper limit)
-    ("MaxUFix64 - 1.0", "1.0"),
-    ("MaxUFix64 - 0.1", "0.1"),
-    ("MaxUFix64 - 0.01", "0.01"),
-    ("MaxUFix64 - 0.001", "0.001"),
-    ("MaxUFix64 - 0.0001", "0.0001"),
-    ("MaxUFix64 - 0.00001", "0.00001"),
-    ("MaxUFix64 - 0.000001", "0.000001"),
-    ("MaxUFix64 - 0.0000001", "0.0000001"),
-    ("MaxUFix64 - 0.00000001", "0.00000001"),
-    ("HalfMaxUFix64", "HalfMaxUFix64"),
-    ("HalfMaxUFix64 + 0.00000001", "HalfMaxUFix64"),
-    ("HalfMaxUFix64", "HalfMaxUFix64 + 0.00000001"),
-]
-
-AddUFix64OverflowTests = [
-    ("MaxUFix64", "1.0"),
-    ("MaxUFix64", "0.01"),
-    ("MaxUFix64", "0.001"),
-    ("MaxUFix64", "0.00001"),
-    ("MaxUFix64", "0.0000001"),
-    ("MaxUFix64", "0.00000001"),
-    ("MaxUFix64", "MaxUFix64"),
-    ("HalfMaxUFix64", "HalfMaxUFix64 + 1.0"),
-    ("HalfMaxUFix64", "HalfMaxUFix64 + 0.1"),
-    ("HalfMaxUFix64", "HalfMaxUFix64 + 0.01"),
-    ("HalfMaxUFix64", "HalfMaxUFix64 + 0.001"),
-    ("HalfMaxUFix64", "HalfMaxUFix64 + 0.0001"),
-    ("HalfMaxUFix64", "HalfMaxUFix64 + 0.00001"),
-    ("HalfMaxUFix64", "HalfMaxUFix64 + 0.000001"),
-    ("HalfMaxUFix64 + 0.00000001", "HalfMaxUFix64 + 0.00000001"),
-    ("HalfMaxUFix64 + 0.00000002", "HalfMaxUFix64"),
-    ("HalfMaxUFix64", "HalfMaxUFix64 + 0.00000002"),
-]
-
-AddFix64Tests = [
-    # Simple cases
-    ("1.0", "1.0"),
-    ("1.0", "0.0"),
-    ("0.0", "0.0"),
-    ("0.0", "1.0"),
-    ("1.0", "2.0"),
-    ("-1.0", "2.0"),
-    ("1.0", "-2.0"),
-    ("-1.0", "-2.0"),
-    ("1.0", "1e8"),
-    ("1.0", "100000001.0"),
-
-    # Random cases
-    ("1.0", "99999999.0"),
-    ("123.456", "789.012"),
-    ("-456.789", "123.456"),
-    ("0.000123", "0.000456"),
-    ("-0.000789", "0.000321"),
-    ("98765.4321", "-12345.6789"),
-    ("31415.9265", "27182.8182"),
-    ("-27182.8182", "-31415.9265"),
-    ("1.23456789", "-0.98765432"),
-    ("0.99999999", "0.00000001"),
-    ("-0.99999999", "-0.00000001"),
-
-    # Edge cases (upper limit)
-    ("MaxFix64 - 1.0", "1.0"),
-    ("MaxFix64 - 0.1", "0.1"),
-    ("MaxFix64 - 0.01", "0.01"),
-    ("MaxFix64 - 0.001", "0.001"),
-    ("MaxFix64 - 0.0001", "0.0001"),
-    ("MaxFix64 - 0.00001", "0.00001"),
-    ("MaxFix64 - 0.000001", "0.000001"),
-    ("MaxFix64 - 0.0000001", "0.0000001"),
-    ("MaxFix64 - 0.00000001", "0.00000001"),
-    ("HalfMaxFix64", "HalfMaxFix64"),
-    ("HalfMaxFix64 + 0.00000001", "HalfMaxFix64"),
-    ("HalfMaxFix64", "HalfMaxFix64 + 0.00000001"),
-
-    ("MaxFix64", "-1.0"),
-    ("MaxFix64", "0.0"),
-    ("MaxFix64", "-0.1"),
-    ("MaxFix64", "-0.01"),
-    ("MaxFix64", "-0.001"),
-    ("MaxFix64", "-0.0001"),
-    ("MaxFix64", "-0.00001"),
-    ("MaxFix64", "-0.000001"),
-    ("MaxFix64", "-0.0000001"),
-    ("MaxFix64", "-0.00000001"),
-    ("HalfMaxFix64", "HalfMaxFix64"),
-
-    # Edge cases (lower limit)
-    ("MinFix64 + 1.0", "-1.0"),
-    ("MinFix64 + 0.1", "-0.1"),
-    ("MinFix64 + 0.01", "-0.01"),
-    ("MinFix64 + 0.001", "-0.001"),
-    ("MinFix64 + 0.0001", "-0.0001"),
-    ("MinFix64 + 0.00001", "-0.00001"),
-    ("MinFix64 + 0.000001", "-0.000001"),
-    ("MinFix64 + 0.0000001", "-0.0000001"),
-    ("MinFix64 + 0.00000001", "-0.00000001"),
-
-    ("MinFix64", "1.0"),
-    ("MinFix64", "0.1"),
-    ("MinFix64", "0.01"),
-    ("MinFix64", "0.001"),
-    ("MinFix64", "0.0001"),
-    ("MinFix64", "0.00001"),
-    ("MinFix64", "0.000001"),
-    ("MinFix64", "0.0000001"),
-    ("MinFix64", "0.00000001"),
-
-    ("0", "MinFix64"),
-    ("-0.1", "MinFix64 + 0.1"),
-    ("-0.01", "MinFix64 + 0.01"),
-    ("-0.001", "MinFix64 + 0.001"),
-    ("-0.0001", "MinFix64 + 0.0001"),
-    ("-0.00001", "MinFix64 + 0.00001"),
-    ("-0.000001", "MinFix64 + 0.000001"),
-    ("-0.0000001", "MinFix64 + 0.0000001"),
-    ("-0.00000001", "MinFix64 + 0.00000001"),
-
-    ("HalfMinFix64", "HalfMinFix64"),
-    ("HalfMinFix64 + 0.00000001", "HalfMinFix64 - 0.00000001"),
-]
-
-AddFix64OverflowTests = [
-    ("MaxFix64", "1.0"),
-    ("MaxFix64", "0.1"),
-    ("MaxFix64", "0.01"),
-    ("MaxFix64", "0.001"),
-    ("MaxFix64", "0.0001"),
-    ("MaxFix64", "0.00001"),
-    ("MaxFix64", "0.000001"),
-    ("MaxFix64", "0.0000001"),
-    ("MaxFix64", "0.00000001"),
-    ("MaxFix64", "MaxFix64"),
-    ("HalfMaxFix64", "HalfMaxFix64 + 1.0"),
-    ("HalfMaxFix64", "HalfMaxFix64 + 0.1"),
-    ("HalfMaxFix64", "HalfMaxFix64 + 0.01"),
-    ("HalfMaxFix64", "HalfMaxFix64 + 0.001"),
-    ("HalfMaxFix64", "HalfMaxFix64 + 0.0001"),
-    ("HalfMaxFix64", "HalfMaxFix64 + 0.00001"),
-    ("HalfMaxFix64", "HalfMaxFix64 + 0.000001"),
-    ("HalfMaxFix64", "HalfMaxFix64 + 0.0000001"),
-    ("HalfMaxFix64 + 0.00000001", "HalfMaxFix64 + 0.00000001"),
-]
-
-AddFix64NegOverflowTests = [
-    ("MinFix64", "-1.0"),
-    ("MinFix64", "-0.1"),
-    ("MinFix64", "-0.01"),
-    ("MinFix64", "-0.001"),
-    ("MinFix64", "-0.0001"),
-    ("MinFix64", "-0.00001"),
-    ("MinFix64", "-0.000001"),
-    ("MinFix64", "-0.0000001"),
-    ("MinFix64", "-0.00000001"),
-    ("MinFix64", "MinFix64"),
-    ("HalfMinFix64", "HalfMinFix64 - 1.0"),
-    ("HalfMinFix64", "HalfMinFix64 - 0.1"),
-    ("HalfMinFix64", "HalfMinFix64 - 0.01"),
-    ("HalfMinFix64", "HalfMinFix64 - 0.001"),
-    ("HalfMinFix64", "HalfMinFix64 - 0.0001"),
-    ("HalfMinFix64", "HalfMinFix64 - 0.00001"),
-    ("HalfMinFix64", "HalfMinFix64 - 0.000001"),
-    ("HalfMinFix64", "HalfMinFix64 - 0.0000001"),
-]
-
-def generate_add_ufix64_tests():
-    lines = ["var AddUFix64Tests = []struct{ A, B, Expected uint64 }{"]
-    for a_str, b_str in AddUFix64Tests:
-        a = parseInput64(a_str)
-        b = parseInput64(b_str)
-        c = a + b
-        a_hex = go_hex64(to_ufix64(a))
-        b_hex = go_hex64(to_ufix64(b))
-        c_hex = go_hex64(to_ufix64(c))
-        comment = f"// {a_str} + {b_str} = {c}"
-        pad = " " * (60 - len(f"    {{{a_hex}, {b_hex}, {c_hex}}},"))
-        lines.append(f"    {{{a_hex}, {b_hex}, {c_hex}}},{pad}{comment}")
-    lines.append("}")
-    return lines
-
-def generate_add_ufix64_overflow_tests():
-    lines = ["var AddUFix64OverflowTests = []struct{ A, B uint64 }{"]
-    for a_str, b_str in AddUFix64OverflowTests:
-        a = parseInput64(a_str)
-        b = parseInput64(b_str)
-        a_hex = go_hex64(to_ufix64(a))
-        b_hex = go_hex64(to_ufix64(b))
-        comment = f"// {a_str} + {b_str} = overflow"
-        pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
-        lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
-    lines.append("}")
-    return lines
-
-def generate_add_fix64_tests():
-    lines = ["var AddFix64Tests = []struct{ A, B, Expected uint64 }{"]
-    for a_str, b_str in AddFix64Tests:
-        a = parseInput64(a_str)
-        b = parseInput64(b_str)
-        c = a + b
-        a_hex = go_hex64(to_fix64(a))
-        b_hex = go_hex64(to_fix64(b))
-        c_hex = go_hex64(to_fix64(c))
-        comment = f"// {a_str} + {b_str} = {c}"
-        pad = " " * (60 - len(f"    {{{a_hex}, {b_hex}, {c_hex}}},"))
-        lines.append(f"    {{{a_hex}, {b_hex}, {c_hex}}},{pad}{comment}")
-    lines.append("}")
-    return lines
-
-def generate_add_fix64_overflow_tests():
-    lines = ["var AddFix64OverflowTests = []struct{ A, B uint64 }{"]
-    for a_str, b_str in AddFix64OverflowTests:
-        a = parseInput64(a_str)
-        b = parseInput64(b_str)
-        a_hex = go_hex64(to_fix64(a))
-        b_hex = go_hex64(to_fix64(b))
-        comment = f"// {a_str} + {b_str} = overflow"
-        pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
-        lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
-    lines.append("}")
-    return lines
-
-def generate_add_fix64_neg_overflow_tests():
-    lines = ["var AddFix64NegOverflowTests = []struct{ A, B uint64 }{"]
-    for a_str, b_str in AddFix64NegOverflowTests:
-        a = parseInput64(a_str)
-        b = parseInput64(b_str)
-        a_hex = go_hex64(to_fix64(a))
-        b_hex = go_hex64(to_fix64(b))
-        comment = f"// {a_str} + {b_str} = neg overflow"
-        pad = " " * (40 - len(f"    {{{a_hex}, {b_hex}}},"))
-        lines.append(f"    {{{a_hex}, {b_hex}}},{pad}{comment}")
-    lines.append("}")
-    return lines
+types = {
+    "UFix64":
+        (Decimal(0),
+         (Decimal(2**64) - 1) / Decimal("1e8"),
+         Decimal("1e-8"),
+         hex64),
+    "Fix64":
+        (Decimal(-2**63) / Decimal("1e8"),
+         (Decimal(2**63) - 1) / Decimal('1e8'),
+         Decimal("1e-8"),
+         hex64),
+}
 
 def main():
-    go_lines = [
-        "// Code generated by testgen/add64.py; DO NOT EDIT.",
-        "package fixedPoint",
-        "",
-    ]
-    go_lines.extend(generate_add_ufix64_tests())
-    go_lines.append("")
-    go_lines.extend(generate_add_ufix64_overflow_tests())
-    go_lines.append("")
-    go_lines.extend(generate_add_fix64_tests())
-    go_lines.append("")
-    go_lines.extend(generate_add_fix64_overflow_tests())
-    go_lines.append("")
-    go_lines.extend(generate_add_fix64_neg_overflow_tests())
-    print('\n'.join(go_lines))
+    if len(sys.argv) != 3:
+        print("Usage: add64.py <type> <operation>")
+        sys.exit(1)
+
+    type = sys.argv[1]
+    operation = sys.argv[2]
+
+    if type not in types:
+        print(f"Invalid type: {type}. Must be one of {list(types.keys())}.")
+        sys.exit(1)
+
+    if operation not in operations:
+        print(f"Invalid operation: {operation}. Must be one of {list(operations.keys())}.")
+        sys.exit(1)
+
+    typeInfo = types[type]
+    operationInfo = operations[operation]
+    operationFunc = operationInfo[0]
+    operationFormat = operationInfo[1]
+
+    # A bit of a hack: Ln() takes an unsigned argument, but returns a signed result. We want the
+    # "type" value to stay as UFix to get the right input, but we want the output formatting and
+    # validation to be for Fix.
+    if operation == "Ln":
+        if type[0] != 'U':
+            print(f"Invalid operation {operation} for type {type}. Ln() only works with unsigned input.")
+            sys.exit(1)
+
+        typeInfo = types[type[1:]] # Trims off the first character, which should be U.
+
+    minVal = typeInfo[0]
+    maxVal = typeInfo[1]
+    quanta = typeInfo[2]
+    formatFunc = typeInfo[3]
+
+    argCount = len(inspect.signature(operationFunc).parameters)
+
+    match argCount:
+        case 1:
+            dataGen = itertools.chain(BaseData, ExtraData, BonusData)
+        case 2:
+            dataGen = itertools.chain(BaseData, ExtraData)
+        case 3:
+            dataGen = itertools.chain(BaseData)
+
+    if type == "UFix64":
+        generator = dataGen | generateUFix64Values | expandByIota | filterUFix64Values
+    elif type == "Fix64":
+        generator = dataGen | generateFix64Values | expandByIota | filterFix64Values
+    
+    for tuple in itertools.product(generator, repeat=argCount):
+        descriptions, values = zip(*tuple)
+
+        err = None
+
+        try:
+            result = operationFunc(*values)
+            if result > 2**128:
+                # The exp() operator can produce VERY large results, which can break
+                # the quantization call below. We know that any value larger than 2**128
+                # is an overflow in all of our types, so we can just skip the quantization step.
+                err = "Overflow"
+            elif not result.is_zero() and result.copy_sign(1) < (quanta / 2):
+                err = "Underflow"
+            else:
+                result = result.quantize(quanta, rounding='ROUND_HALF_UP')
+        except (ZeroDivisionError, InvalidOperation):
+            err = "DivByZero"
+        except Overflow:
+            err = "Overflow"
+
+        if operation == "Ln" and values[0] == 0:
+            err = "DomainError"
+
+        if err is None:
+            if result > maxVal:
+                err = "Overflow"
+            elif result < minVal:
+                err = "NegOverflow"
+
+        if (operation == "Sin" or operation == "Cos") and err == "Underflow":
+            # When sin or cost is called, they might produce values VERY, VERY close to 0
+            # that would get tagged as underflow. However, for convenience, we want
+            # to treat these as 0, so we just replace underflow errors with 0 results
+            # for those two operations.
+            result = Decimal(0)
+            err = None
+        
+        if operation == "Exp" and not err and result.is_zero():
+            # Technically, the exp() operation can only return positive results, so if
+            # it did return zero, it must have been an underflow.
+            err = "Underflow"
+
+        # Wrap arguments in parentheses if they contain spaces (for readability)
+        if argCount > 1:
+            descriptions = map(lambda d: f'({d})' if ' ' in d else d, descriptions)
+
+        if err is None:
+            comment = operationFormat.format(*descriptions, result)
+        else:
+            comment = operationFormat.format(*descriptions, err)
+            result = Decimal(0)
+
+        hexValues = map(formatFunc, values)
+        print(f'({', '.join(hexValues)}, {formatFunc(result)}, {err}, "{comment}")')
 
 if __name__ == "__main__":
     main()
