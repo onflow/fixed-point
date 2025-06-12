@@ -270,3 +270,229 @@ func (x UFix64) Sqrt() (UFix64, error) {
 
 	return UFix64(est), nil
 }
+
+func lnInnerLoop(x_extra Fix64, scale Fix64) Fix64 {
+	// We will compute ln(x) using the approximation:
+	// ln(x) = 2 * (z + z^3/3 + z^5/5 + z^7/7 + ...)
+	// where z = (x - 1) / (x + 1)
+
+	num, _ := x_extra.Sub(scale)
+	den, _ := x_extra.Add(scale)
+	z, err := num.FMD(scale, den)
+
+	if err == ErrUnderflow {
+		// If z is too small to represent, we just return 0
+		return 0
+	}
+
+	// Precompute z^2 to avoid recomputing it in the loop.
+	z2, err := z.FMD(z, scale)
+
+	if err == ErrUnderflow {
+		// If z^2 is too small, we just return 2*z, which is the first term
+		// in the series.
+		return z.intMul(2)
+	}
+
+	term := z
+	sum := z
+	iter := int64(1)
+
+	// Keep interating until "term" and/or "next" rounds to zero
+	for {
+		term, err = term.FMD(z2, scale)
+
+		if err == ErrUnderflow {
+			break
+		}
+
+		// We can use basic arithmetic here since we are dividing by a
+		// an integer constant
+		next := term.intDiv(iter*2 + 1)
+
+		if next.isZero() {
+			break
+		}
+
+		sum, _ = sum.Add(next)
+		iter += 1
+	}
+
+	return sum.intMul(2)
+}
+
+func (x UFix64) Ln() (Fix64, error) {
+	if x == 0 {
+		return 0, ErrDomain
+	}
+
+	// The Taylor expansion of ln(x) converges faster for values closer to 1.
+	// If we scale the input to have exactly 37 leading zero bits, the input will
+	// be a number in the range (0.67108864, 1.33584262). (0.67108864 = 1 << 36 / scale)
+	// For every power of two removed (or added) by this shift, we add (or subtract)
+	// a multiple of ln(2) at the end of the function.
+	leadingZeros := bits.LeadingZeros64(uint64(x))
+	k := 37 - leadingZeros
+
+	computationBits := 16
+
+	shift := k - computationBits
+
+	if shift > 0 {
+		x = x >> shift
+	} else if shift < 0 {
+		x = x << -shift
+	}
+
+	res_scaled := lnInnerLoop(Fix64(x), Fix64One<<computationBits)
+
+	// Add/subtract as many ln(2)s as required to account for the scaling by 2^k we
+	// did at the beginning.
+	powerCorrection, _ := Fix64(ufix64_ln2Multiple).FMD(Fix64(k<<computationBits), Fix64(ufix64_ln2Factor))
+	res_scaled, _ = res_scaled.Add(powerCorrection)
+
+	res_scaled += 1 << (computationBits - 1) // Add a half to round to the nearest integer
+	return res_scaled >> computationBits, nil
+}
+
+func (x Fix64) Exp() (UFix64, error) {
+	var err error
+
+	// If x is 0, return 1.
+	if x == 0 {
+		return UFix64One, nil
+	}
+
+	// We can quickly check to see if the input will overflow or underflow
+	if x > maxLn64 {
+		return 0, ErrOverflow
+	} else if x < minLn64 {
+		return 0, ErrUnderflow
+	}
+
+	// We can do the opposite of the trick we did in ln(x). There, we scaled the input
+	// by powers of 2, and then added/subtracted multiples of ln(2) at the end. Here
+	// we can add/subtract multiples of ln(2) at the beginning, and then scale by
+	// the appropriate power of 2 at the end.
+
+	// The first step is to do a division of the input by ln(2); the quotient will
+	// tell us how many shifts we need to do at the end to scale the result of our
+	// inner loop to the correct value, and the remainder will be the input to our
+	// Taylor series expansion.
+	//
+	// Of course, "divide by ln(2)" isn't actually as simple as it sounds because
+	// we can't represent ln(2) exactly in fix64, we need to use an approximation.
+	// So, in order to introduce as small of an error as possible, we scale the
+	// input AND ln(2) by a factor that minimizes the error. See genFactors.py for
+	// more details.
+
+	var unsignedX uint64
+	var isNeg bool
+
+	if x >= 0 {
+		unsignedX = uint64(x)
+		isNeg = false
+	} else {
+		unsignedX = uint64(-x)
+		isNeg = true
+	}
+
+	scaledHi, scaledLo := bits.Mul64(unsignedX, ufix64_ln2Factor)
+
+	quo, rem := bits.Div64(scaledHi, scaledLo, uint64(ufix64_ln2Multiple))
+
+	k := int64(quo)
+
+	// We now have a value k indicating the number of times we need to scale the result after
+	// our inner loop, and a remainder that is the input to our Taylor series expansion.
+	// The remainder is in the range [0, ln(2)) (~0.69) but is still multiplied by ufix64_ln2Factor.
+	// We can run the inner loop with this multiplier in place, by using ufix64_ln2Factor times
+	// UFixScale as the scale for our arithmetic operations.
+
+	seriesScale := UFix64One.intMul(int64(ufix64_ln2Factor))
+	seriesInput := UFix64(rem)
+
+	// We use the Taylor series to compute e^x. The series is:
+	// e^x = 1 + x + x^2/2! + x^3/3! + x^4/4! + ...
+
+	// Remember: Although we are using the UFix64 type here, the actual scale factor
+	// of these values is seriesScale, provided we are careful to only use functions
+	// that are scale agnostic (lke FMD and simple addition), this won't bite us.
+	term := seriesScale // Starts as 1.0 in the series
+	sum := seriesScale  // Starts as 1.0 in the series
+	iter := int64(1)
+
+	// This loop converges in under 20 iterations in testing
+	for {
+		// Multiply another power of x into the term, using FMD with seriesScale
+		// as the divisor will keep the result in the correct scale.
+		term, err = term.FMD(seriesInput, seriesScale)
+
+		if err == ErrUnderflow {
+			// If the term is too small to represent, we can just break out of the loop.
+			break
+		} else if err != nil {
+			return 0, err
+		}
+
+		// Divide by the iteration number to account for the factorial.
+		// We can use simple division here because we know that we are
+		// dividing by an integer constant that can't overflow.
+		term = term.intDiv(iter)
+
+		// Break out of the loop when the term is too small to change the sum.
+		if term == 0 {
+			break
+		}
+
+		// Add the current term to the sum, we can use basic arithmetic
+		// because we know we are adding converging terms that won't overflow.
+		// (The value that comes out of this loop will always be <= 2, since we
+		// quantized the input to be in the range [0, ln(2)).
+		sum += term
+		iter += 1
+	}
+
+	// What we have now is the value of e^x with two overlapping factors:
+	//    - The scale factor, k, which is the power of two that we need to
+	//      multiply the result by to get the final value. Note that k can
+	// 		be negative!
+	//    - The seriesScale, which is the scale factor we used for the Taylor
+	//      series expansion to maintain precision.
+	//
+	// We can resolve both of these factors with a single FMD call and a shift.
+
+	if !isNeg {
+		// Our inner loop computed the result that needs to be multiplied by 2^k
+		// and scaled down by seriesScale. We can resolve both of those with a single
+		// FMD call.
+		return sum.FMD(UFix64One<<k, seriesScale)
+	} else {
+		// We want the inverse of the the non-negative case. So, before
+		// we wanted (sum * 2^k) / seriesScale, we want seriesScale / (sum * 2^k).
+		// We can rearange this to be (seriesScale >> k) / sum.
+		return (seriesScale >> k).FMD(UFix64One, sum)
+	}
+}
+
+func (a UFix64) Pow(b Fix64) (UFix64, error) {
+	if a == 0 {
+		return 0, nil
+	}
+	if b == 0 {
+		return UFix64One, nil
+	}
+	if b == Fix64One {
+		return a, nil
+	}
+
+	lnA, err := UFix64(a).Ln()
+	if err != nil {
+		return 0, err
+	}
+	lnA_times_b, err := lnA.Mul(b)
+	if err != nil {
+		return 0, err
+	}
+	return lnA_times_b.Exp()
+}

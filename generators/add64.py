@@ -59,6 +59,7 @@ operations = {
     "Sqrt": (lambda a: a.sqrt(), "sqrt({}) = {}"),
     "Ln": (lambda a: a.ln(), "ln({}) = {}"),
     "Exp": (lambda a: a.exp(), "exp({}) = {}"),
+    "Pow": (lambda a, b: a ** b, "{} ** {} = {}"),
     "Clamp": (lambda a: decClamp(a), "clamp({}) = {}"),
     "Sin": (lambda a: decSin(a), "sin({}) = {}"),
     "Cos": (lambda a: decCos(a), "cos({}) = {}"),

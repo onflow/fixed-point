@@ -67,7 +67,7 @@ fix64_TwoPiMultiple = pi * 2 * 2662294
 fix64_extra_TwoPiMultiple = pi * 2 * 29
 
 # A similar factor for ln(2) for UFix64.
-ufix64_ln2Factor = Decimal(133036616393)
+ufix64_ln2Factor = Decimal(1565060668)
 ufix64_ln2Multiple = ln2 * ufix64_ln2Factor
 
 # sin(x) is functionally linear for all values <= this "iota" value in fix64_extra

@@ -116,6 +116,13 @@ func BenchmarkLnUFix64(b *testing.B) {
 	}
 }
 
+func BenchmarkExpFix64(b *testing.B) {
+	a := Fix64(123456789)
+	for i := 0; i < b.N; i++ {
+		_, _ = a.Exp()
+	}
+}
+
 func BenchmarkLnUFix128(b *testing.B) {
 	a := UFix128{123456789, 987654321}
 	for i := 0; i < b.N; i++ {

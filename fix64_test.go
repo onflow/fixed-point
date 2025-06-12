@@ -53,13 +53,13 @@ type TestState struct {
 func TestDebugOneArgTestCase(t *testing.T) {
 
 	tc := OneArgTestCase{
-		A:        0xffffffffffffd8ef,
-		Expected: 0x0000000005f5b9f0,
+		A:        0x0000000000bebc21,
+		Expected: 0xfffffffff39b062e,
 		err:      nil,
 	}
 
-	a := Fix64(tc.A)
-	res, err := a.ExpTest()
+	a := UFix64(tc.A)
+	res, err := a.Ln()
 
 	// Used for debugging clampAngle
 	// err := error(nil)
@@ -639,9 +639,29 @@ func TestExpFix64(t *testing.T) {
 
 	for tc := range OneArgTestChannel(t, testState.opType, testState.operation) {
 		a := Fix64(tc.A)
-		res, err := a.ExpTest()
+		res, err := a.Exp()
 
 		OneArgResultCheck(t, testState, tc, uint64(res), err)
+	}
+	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestPowFix64(t *testing.T) {
+	testState := &TestState{
+		opType:       "Fix64",
+		operation:    "Pow",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel(t, testState.opType, testState.operation) {
+		a := UFix64(tc.A)
+		b := Fix64(tc.B)
+		res, err := a.Pow(b)
+
+		TwoArgResultCheck(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.opType, testState.successCount, "passed,", testState.failureCount, "failed")
 }

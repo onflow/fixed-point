@@ -10,6 +10,7 @@ UFix64Max = Decimal(0xffffffffffffffff) / Decimal(1e8)  # UFix64 max value
 Fix64Max = Decimal(0x7fffffffffffffff) / Decimal(1e8)  # Fix64 max value
 
 decLn2 = Decimal(2).ln()
+smallestK = Decimal(1e-8).ln() / decLn2
 
 def genLn2Factor64(maxFactor):
     """Generate a factor for ln(2) that minimizes error in the space of 64-bits."""
@@ -22,7 +23,7 @@ def genLn2Factor64(maxFactor):
 
     # Start with the highest possible factor and work downwards
     for factor in range(int(maxFactor), 1, -1):
-        scaledEstimate = (decLn2 * Decimal(factor)).quantize(Decimal('1e-8'), rounding=ROUND_DOWN)
+        scaledEstimate = (decLn2 * Decimal(factor)).quantize(Decimal('1e-8'), rounding=ROUND_HALF_UP)
         est = scaledEstimate / Decimal(factor)
         err = abs(est - decLn2)
         if err < minError:
@@ -76,7 +77,7 @@ def main():
     print(f"Deadline set to {deadline} seconds.")
 
     print("Calculating best factor of ln(2) for UFix64")
-    maxFactor64 = (Fix64Max / decLn2).quantize(1, rounding=ROUND_DOWN)
+    maxFactor64 = (UFix64Max / 2).quantize(1, rounding=ROUND_DOWN)
     genLn2Factor64(maxFactor64)
 
 if __name__ == "__main__":
