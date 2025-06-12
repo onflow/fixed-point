@@ -22,8 +22,11 @@ const Fix64_Pi = Fix64(0x12b9b0a1)
 const fix64_2Pi = Fix64(0x25736143)
 const fix64_PiOver2 = Fix64(0x95cd851)
 const fix64_3PiOver2 = Fix64(0x1c1688f2)
-const fix64_TwoPiShifted33 = uint64(0x4ae6c2856f98469f)
-const fix64_TwoPiMultiple = uint64(0x5f15fcd702525)
+const fix64_TwoPiShifted33 = Fix64(0x4ae6c2856f98469f)
+const fix64_TwoPiMultiple = Fix64(0x5f15fcd702525)
+const ln2_fix64 = Fix64(0x421a89e)
+const ufix64_ln2Factor = uint64(0x1ef999aac9)
+const ufix64_ln2Multiple = UFix64(0x7ff8fa66c8d7f5c3)
 
 // Fix128 transcendental constants
 var Fix128_Pi = Fix128(raw128{0x0000000000029942, 0x1439a0abd72cb0b3})

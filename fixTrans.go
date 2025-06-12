@@ -670,55 +670,84 @@ func (x Fix64) ExpTest() (UFix64, error) {
 		return 0, ErrUnderflow
 	}
 
-	internalScaleBits := int64(32)
-	internalScaleOne := Fix64One << internalScaleBits
-
-	// The input is in a very small range (between about -19 and 26), so we can
-	// start by converting into fix64_extra for extra precision, with an extra 2^10
-	// factor for the division by ln(2).
-
-	x_extra := fix64_extra(x << internalScaleBits)
-
-	// If k will be larger than extraBits, we are going to end up with errors at the end of the
-	// function, because we would have to shift the inner result left bringing in zeros).
-	// Fortunately, we can scale the input down by factors of 2, and then square
-	// the result an equivalent number of times to compensate, this will preserve more
-	requiredSquarings := 0
-	// squaringCutoff := fix64_extra(int64(ln2_fix64_term) * internalScaleBits)
-
-	// for x_extra > fix64_extra(squaringCutoff) {
-	// 	x_extra = x_extra >> 1
-	// 	requiredSquarings += 1
-	// }
-
 	// We can do the opposite of the trick we did in ln(x). There we, scaled the input
-	// by powers of 2, and then added/subtracted a multiples of ln(2) at the end. Here
+	// by powers of 2, and then added/subtracted multiples of ln(2) at the end. Here
 	// we can add/subtract multiples of ln(2) at the beginning, and then scale by
 	// the appropriate power of 2 at the end.
-	//
-	// We can use bare division here because we would throw out any fractional part anyway
-	k := int64(x_extra.intDiv(int64(ln2_fix64_term)))
 
-	// This is just a sanity check, the math above should ensure that k is always less than
-	// extraBits
-	if k >= internalScaleBits {
-		panic("k must be less than extraBits")
+	// The first step is to do a division of the input by ln(2), the quotient will
+	// tell us how many shifts we need to do at the end to scale the result of our
+	// inner loop to the correct value, and the remainder will be the input to our
+	// Taylor series expansion.
+	//
+	// Of course, "divide by ln(2)" isn't actually as simple as it sounds because
+	// we can't represent ln(2) exactly in fix64, we need to use an approximation.
+	// So, in order to introduce as small of an error as possible, we scale the
+	// input AND ln(2) by a factor that minimizes the error. See genFactors.py for
+	// more details.
+
+	var unsignedX uint64
+	var isNeg bool
+
+	if x >= 0 {
+		unsignedX = uint64(x)
+		isNeg = false
+	} else {
+		unsignedX = uint64(-x)
+		isNeg = true
 	}
 
-	// Once we subtract k * ln(2) from the input (note that k can be negative) we should
-	// end up with a value in the range [0, ln(2)]
-	normalized_extra, _ := x_extra.Sub(ln2_fix64_term.intMul(k))
+	scaledHi, scaledLo := bits.Mul64(unsignedX, ufix64_ln2Factor)
+
+	quo, rem := bits.Div64(scaledHi, scaledLo, uint64(ufix64_ln2Multiple))
+
+	k := int64(quo)
+
+	if isNeg {
+		// We want the remainder to be positive, even if the input is negative.
+		// We need to flip the sign of both the quotient and the remainder, and
+		// add another copy of ln(2) to the remainder. We then flip the sign of k
+		// and add one to account for the fact that we added ln(2) to the remainder.
+		k = -(k + 1)
+		rem = uint64(ufix64_ln2Multiple) - rem
+	}
+
+	// We know have a value k, that is the number of times we need to scale the result after
+	// our inner loop, and a remainder that is the input to our Taylor series expansion.
+	// The remainder is in the range [0, ln(2)) (~0.69) but is still multiplied by ufix64_ln2Factor.
+	// We could run the inner loop with this multiplier in place, but this might result in
+	// us spending time to compute a bunch of precision we don't need. Instead, we observe that
+	// our final answer will be shifted left by k, and so we run the inner loop at a precision
+	// that is k + p bits for non-negative k, with a minimum of p bits for negative k. (Where
+	// "p" and "bits of precision" here means the number of bits beyond the normal Fix64 scale).
+	precisionBits := uint64(32)
+
+	// if k > 0 {
+	// 	precisionBits += uint64(k)
+	// }
+
+	seriesScale := UFix64One << precisionBits
+
+	// We abuse FMD() a bit here. We want to multiply the remainder up by the series scale,
+	// at the same time as we are dividing out the factor of ln(2) that we used to compute k.
+	// Because of the way that FMD works internally, it's actually angnostic to the scale
+	// of the inputs, so this does what we want, including rounding.
+	seriesInput, _ := UFix64(rem).FMD(UFix64(seriesScale), UFix64One.intMul(int64(ufix64_ln2Factor)))
 
 	// Use the Taylor series to compute e^x. The series is:
 	// e^x = 1 + x + x^2/2! + x^3/3! + x^4/4! + ...
-	term := internalScaleOne
-	sum := internalScaleOne
+
+	// Remember: Although we are using the UFix64 type here, the actual scale factor
+	// of these values is seriesScale, provided we are careful to only use functions
+	// that are scale agnostic (lke FMD), this won't bite us.
+	term := seriesScale // Starts as 1.0 in the series
+	sum := seriesScale  // Starts as 1.0 in the series
 	iter := int64(1)
 
 	// This loop tends to converge in 20-40 iterations for values close to 1
 	for {
 		// Multiply in another power of x to the term.
-		term, err = term.FMD(Fix64(normalized_extra), internalScaleOne)
+		term, err = term.FMD(seriesInput, seriesScale)
 
 		if err == ErrUnderflow {
 			// If the term is too small to represent, we can just break out of the loop.
@@ -733,8 +762,6 @@ func (x Fix64) ExpTest() (UFix64, error) {
 		term = term.intDiv(iter)
 
 		// Break out of the loop when the term is too small to change the sum.
-		// TODO: We should probably break out of this loop when term < 1000
-		// (which is the smallest fix64_12 value representable in Fix64)
 		if term == 0 {
 			break
 		}
@@ -745,27 +772,22 @@ func (x Fix64) ExpTest() (UFix64, error) {
 		iter += 1
 	}
 
-	if k >= internalScaleBits {
-		panic("k must be less than extraBits")
-	}
+	// What we have now is the value of e^x with two overlapping shift factors:
+	//    - Precision bits, which are extra bits of precision that we want to shift
+	//      out to the right.
+	//    - The scale factor, k, which is the power of two that we need to
+	//      multiply the result by to get the final value (i.e. shifting left).
+	// 		Note that k can be negative!
+	// Because we made sure that precisionBits is always positive AND always greater than
+	// k, we know that the net effect will be a right shift by at least 4.
 
-	// We need to scale the result by 2^k and also shift out the extra bits we added
-	// to account for the fix64_extra type.
-	var shift int64 = internalScaleBits - k
+	netShift := int64(precisionBits) - k
 
-	if shift > 0 {
-		sum = sum + (1 << (shift - 1)) // Add half to round to nearest
-		sum = sum >> shift
-	}
+	// Scale the output, rounding to nearest.
+	sum = sum + (1 << (netShift - 1)) // Add half to round to nearest
+	sum = sum >> netShift             // Shift out the extra bits
 
 	res := UFix64(sum)
-
-	for range requiredSquarings {
-		res, err = res.Mul(res)
-		if err != nil {
-			return 0, err
-		}
-	}
 
 	return res, nil
 }
@@ -901,7 +923,7 @@ func clampAngle(x Fix64) (res fix64_extra, isNeg bool) {
 		// Even better, this constant is less than the maximum value representable as a fix64_extra,
 		// so we can then convert the input to a fix64_extra without worrying about overflow.
 		unsignedX = unsignedX % 646448019151968420
-		unsignedX = unsignedX % fix64_TwoPiMultiple
+		unsignedX = unsignedX % uint64(fix64_TwoPiMultiple)
 
 		x_extra := unsignedX << extraBits
 
@@ -930,7 +952,7 @@ func clampAngle(x Fix64) (res fix64_extra, isNeg bool) {
 		tempHi := x_extra >> (64 - 21)
 		tempLo := x_extra << 21
 
-		_, scaledRem := bits.Div64(tempHi, tempLo, fix64_TwoPiShifted33)
+		_, scaledRem := bits.Div64(tempHi, tempLo, uint64(fix64_TwoPiShifted33))
 
 		// Shifting right by 33 bits would get the remainder in the range [-2π, 2π] as a Fix64.
 		// However, since we are returning fix64_extra anyway, we can scale it down by

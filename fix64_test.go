@@ -53,8 +53,8 @@ type TestState struct {
 func TestDebugOneArgTestCase(t *testing.T) {
 
 	tc := OneArgTestCase{
-		A:        0x000000006df37f68,
-		Expected: 0x0024771b9760d89c,
+		A:        0xffffffffffffd8ef,
+		Expected: 0x0000000005f5b9f0,
 		err:      nil,
 	}
 
