@@ -44,9 +44,9 @@ def decClamp(x: Decimal) -> Decimal:
     if x > decPi:
         x -= decPi * 2
 
-    # The clamp function in Go actually returns a fix64_extra value, so we multiply
-    # by 2**12 to match that scale.
-    x = x * Decimal(2**extraBits)
+    # The clamp function in Go actually returns a scaled value, so we multiply
+    # to match that scale.
+    x = x * 10632378527
 
     return x
 
@@ -84,53 +84,84 @@ def main():
         print("Usage: add64.py <type> <operation>")
         sys.exit(1)
 
-    type = sys.argv[1]
+    outputType = sys.argv[1]
     operation = sys.argv[2]
 
-    if type not in types:
-        print(f"Invalid type: {type}. Must be one of {list(types.keys())}.")
+    if outputType not in types:
+        print(f"Invalid output type: {outputType}. Must be one of {list(types.keys())}.")
         sys.exit(1)
 
     if operation not in operations:
         print(f"Invalid operation: {operation}. Must be one of {list(operations.keys())}.")
         sys.exit(1)
 
-    typeInfo = types[type]
+    outputTypeInfo = types[outputType]
     operationInfo = operations[operation]
     operationFunc = operationInfo[0]
     operationFormat = operationInfo[1]
 
-    # A bit of a hack: Ln() takes an unsigned argument, but returns a signed result. We want the
-    # "type" value to stay as UFix to get the right input, but we want the output formatting and
-    # validation to be for Fix.
-    if operation == "Ln":
-        if type[0] != 'U':
-            print(f"Invalid operation {operation} for type {type}. Ln() only works with unsigned input.")
-            sys.exit(1)
-
-        typeInfo = types[type[1:]] # Trims off the first character, which should be U.
-
-    minVal = typeInfo[0]
-    maxVal = typeInfo[1]
-    quanta = typeInfo[2]
-    formatFunc = typeInfo[3]
+    minVal = outputTypeInfo[0]
+    maxVal = outputTypeInfo[1]
+    quanta = outputTypeInfo[2]
+    formatFunc = outputTypeInfo[3]
 
     argCount = len(inspect.signature(operationFunc).parameters)
 
+    # By default, we assume that the inputs are the same type as the output. This will be true
+    # for most operations.
+    argTypes = [outputType] * argCount
+
+    match operation:
+        case "Ln":
+            # Ln goes unsigned -> signed
+            if outputType[0] == 'U':
+                exit("Ln operation requires a signed output type (Fix64 or Fix128).")
+            
+            argTypes[0] = "U" + outputType  # set the argument type to be unsigned
+        case "Exp":
+            # Exp goes signed -> unsigned
+            if outputType[0] != 'U':
+                exit("Exp operation requires an unsigned output type (UFix64 or UFix128).")
+
+            argTypes[0] = outputType[1:]  # set the argument type to be signed
+        case "Pow":
+            # Pow goes (unsigned, signed) -> unsigned
+            if outputType[0] != 'U':
+                exit("Pow operation requires an unsigned output type (UFix64 or UFix128).")
+
+            argTypes = [outputType, outputType[1:]]  # first argument unsigned, second is signed
+        case _:
+            pass  # No change needed for other operations
+
+    bitLength = "64" if outputType[-1] == '4' else "128"
+
+    baseData = globals()[f"BaseData{bitLength}"]
+    extraData = globals()[f"ExtraData{bitLength}"]
+    bonusData = globals()[f"BonusData{bitLength}"]
+
     match argCount:
         case 1:
-            dataGen = itertools.chain(BaseData, ExtraData, BonusData)
+            dataList = baseData + extraData +bonusData
         case 2:
-            dataGen = itertools.chain(BaseData, ExtraData)
+            dataList = baseData + extraData
         case 3:
-            dataGen = itertools.chain(BaseData)
+            dataList = baseData
 
-    if type == "UFix64":
-        generator = dataGen | generateUFix64Values | expandByIota | filterUFix64Values
-    elif type == "Fix64":
-        generator = dataGen | generateFix64Values | expandByIota | filterFix64Values
-    
-    for tuple in itertools.product(generator, repeat=argCount):
+    argGenerators = []
+
+    for argType in argTypes:
+        if argType == "UFix64":
+            argGenerators.append(dataList | generateUFix64Values | expandByIota | filterUFix64Values)
+        elif argType == "Fix64":
+            argGenerators.append(dataList | generateFix64Values | expandByIota | filterFix64Values)
+        elif argType == "UFix128":
+            exit("128-bit types not ready yet.")
+        elif argType == "Fix128":
+            exit("128-bit types not ready yet.")
+        else:
+            raise ValueError(f"Unknown argument type: {argType}")
+
+    for tuple in itertools.product(*argGenerators):
         descriptions, values = zip(*tuple)
 
         err = None
@@ -161,17 +192,38 @@ def main():
                 err = "NegOverflow"
 
         if (operation == "Sin" or operation == "Cos") and err == "Underflow":
-            # When sin or cost is called, they might produce values VERY, VERY close to 0
+            # When sin or cos is called, they might produce values VERY, VERY close to 0
             # that would get tagged as underflow. However, for convenience, we want
             # to treat these as 0, so we just replace underflow errors with 0 results
             # for those two operations.
             result = Decimal(0)
             err = None
         
-        if operation == "Exp" and not err and result.is_zero():
-            # Technically, the exp() operation can only return positive results, so if
-            # it did return zero, it must have been an underflow.
+        if (operation == "Tan"):
+            # Producing accurate results for tan() close to ±π/2 is difficult, so we
+            # treat any result that is outside the range of -50M to 50M as an overflow.
+            if result > Decimal('5e7'):
+                err = "Overflow"
+            elif result < Decimal('-5e7'):
+                err = "NegOverflow"
+        
+        if (operation == "Exp" or operation == "Pow") and not err and result.is_zero():
+            # Technically, the exp() and pow() operations can only return positive, non-zero
+            # results, so if it did return zero, it must have been an underflow.
             err = "Underflow"
+
+        if operation == "Pow" and values[0] == 0:
+            # The Decimal library treats 0^x differently that we want to, so we override
+            # some if its behavior here
+            if values[1] < 0:
+                err = "DivByZero"
+                result = Decimal(0)
+            elif values[1] == 0:
+                err = None
+                result = Decimal(1)
+            else:
+                err = None
+                result = Decimal(0)
 
         # Wrap arguments in parentheses if they contain spaces (for readability)
         if argCount > 1:

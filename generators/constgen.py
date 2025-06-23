@@ -1,32 +1,58 @@
 # constgen.py
-# Generates Go constant definitions for transcendental values (pi, 2*pi, pi/2, 3*pi/2, ln(2), etc.)
-# for Fix64, fix64_extra, Fix128, fix128_extra, etc.
+# Generates Go constant definitions for Fix64 and Fix128 types.
 # Uses Decimal and mpmath for high-precision computation.
 
 from decimal import *
-import mpmath
+import mpmath as mp
 from utils import go_hex128
 
 getcontext().prec = 50
-mpmath.mp.dps = 50
+mp.mp.dps = 50
 
 # Fixed-point scales
 Fix64Scale = Decimal('1e8')
 Fix128Scale = Decimal('1e24')
 fix64Epsilon = Decimal('1e-8')  # Smallest representable difference in Fix64
-fix128Epsion = Decimal('1e-24')  # Smallest representable difference in Fix128
+fix128Epsilon = Decimal('1e-24')  # Smallest representable difference in Fix128
 
 UFix64Max = Decimal(0xffffffffffffffff) / Fix64Scale
 Fix64Max = Decimal(0x7fffffffffffffff) / Fix64Scale
 Fix64Min = Decimal(-0x8000000000000000) / Fix64Scale
 
-extraBits = 20
-fix64ExtraScale = Fix64Scale * (1 << extraBits)
-fix128ExtraScale = Fix128Scale * (1 << extraBits)
+UFix128Max = Decimal(0xffffffffffffffffffffffffffffffff) / Fix128Scale
+Fix128Max =  Decimal(0x7fffffffffffffffffffffffffffffff) / Fix128Scale
+Fix128Min = Decimal(-0x80000000000000000000000000000000) / Fix128Scale
 
 # Base constants
-pi = Decimal(str(mpmath.pi)) # Pi to 50 decimal places!
+pi = Decimal(str(mp.pi)) # Pi to 50 decimal places!
 ln2 = Decimal(2).ln() # Natural logarithm of 2
+
+
+# Here we calculate the computation base for the trig functions for Fix64.
+# 
+# The constant below comes from running genFactors.py. It finds a large multiple
+# for 2π that minimizes the error after the 8th decimal place, while still ensuring
+# that trig values that have been scaled by this factor can still fit in a Fix64.
+# 
+# This allows us to have a "constant" for 2π that is accurate to nearly 30 decimal
+# places, even though we can fit it into to a 64-bit value. (Which is almost magic
+# given that 64-bits can only represent 19 decimal places accurately!)
+fix64TrigMultiplier = Decimal(10632378527)
+fix64PiScaled = pi * fix64TrigMultiplier
+fix64TwoPiScaled = fix64PiScaled * 2
+fix64HalfPiScaled = fix64PiScaled / 2
+fix64ThreeHalfPiScaled = fix64PiScaled * 3 / 2
+
+# to compute sin(x), the first non-linear term would be (x^3)/6. We use this fact
+# to find a reasonable limit on using a simple linear approximation for sin(x).
+# The following calculation finds the largest value of x for which the (x^3)/6
+# is too small to affect the result (when scaled by fix64TrigMultiplier).
+fix64_sinIota = (Decimal(3) / Decimal(Fix64Scale * fix64TrigMultiplier)) ** (Decimal(1) / Decimal(3))
+fix64SinIotaScaled = fix64_sinIota * fix64TrigMultiplier
+
+# A factor for calculating ln() an exp() in Fix64, comes from genFactors.py
+fix64LnMultiplier = Decimal(3095485757)
+fix64Ln2Scaled = ln2 * fix64LnMultiplier
 
  # Largest input to exp() that doesn't overflow
 maxLn64 = UFix64Max.ln().quantize(fix64Epsilon, rounding='ROUND_DOWN')
@@ -34,49 +60,22 @@ maxLn64 = UFix64Max.ln().quantize(fix64Epsilon, rounding='ROUND_DOWN')
 minLn64 = (fix64Epsilon / 2).ln().quantize(fix64Epsilon, rounding='ROUND_DOWN')
 
 
-# This value is used in clampAngle(), the function that takes an arbitrary input
-# angle and returns it in the range (-π, π). The first step of that function
-# is to compute x % 2π, which is suprisingly difficult to do accurately.
-#
-# The constant below is equal to 2π * 2662294. Where did 2662294 come from?
-# I wrote a script that checked EVERY multiple of 2π to find one that minimizes
-# error past the 8th decimal place. In particualr, 2π * 2662294 is equal to
-# 16727686.5441923699999993294. What this means is that this particular constant
-# (as a Fix64) an approximation of a multiple of 2•π that with an error of just
-# 6.71e-16, even though it only has 8 decimal places. Taking x (as a Fix64) modulo this
-# value is very accuracte, and means the other techniques in clampAngle() have to
-# account for less accumulated error.
-#
-# (If we're honest, it's going to be exceedingly rare that we ever have to deal with
-# such large inputs outside of testing, but since this is so cheap, we might as well
-# use it to get a better approximation of x % 2π.)
-#
-# FWIW- There might be other, larger multiples of 2π that are even more accurate; we use
-# 2662294 because 2•π•2662294 is less than the maximum value of representable as a
-# fix64_extra. Once we've done this modulo operation we can safely convert the result
-# to fix64_extra without overflow.
-fix64_TwoPiMultiple = pi * 2 * 2662294
+# Similar values to the above, but for Fix128
+fix128TrigMultiplier = Decimal(24263469845778)
+fix128PiScaled = pi * fix128TrigMultiplier
+fix128TwoPiScaled = fix128PiScaled * 2
+fix128HalfPiScaled = fix128PiScaled / 2
+fix128ThreeHalfPiScaled = fix128PiScaled * 3 / 2
 
-# Same idea as above, but for the range of fix64_extra, surprisingly, we get
-# 16 decimal places of accuracy with a multiplier of just 29.
-#
-# NOTE: This value is slightly HIGHER thant 2π, while the previous one is slightly
-# LOWER. This is advantageous because that means any error introduced by these
-# two approximations will be in opposite directions. They don't exactly "cancel out"
-# but at least they don't *compound*.
-fix64_extra_TwoPiMultiple = pi * 2 * 29
+fix128_sinIota = (Decimal(3) / Decimal(Fix128Scale * fix128TrigMultiplier)) ** (Decimal(1) / Decimal(3))
+fix128SinIotaScaled = fix128_sinIota * fix128TrigMultiplier
 
-# A similar factor for ln(2) for UFix64.
-ufix64_ln2Factor = Decimal(1565060668)
-ufix64_ln2Multiple = ln2 * ufix64_ln2Factor
+fix128LnMultiplier = Decimal(3095485757)
+fix128Ln2Scaled = ln2 * fix64LnMultiplier
 
-# sin(x) is functionally linear for all values <= this "iota" value in fix64_extra
-# The first non-linear term of the Taylor series for sin(x) is x^3/6, so this is the
-# largest value of x for which x^3/6 is too small to represent in fix64_extra.
-fix64_extra_sinIota = (Decimal(6) / Decimal(fix64ExtraScale)) ** (Decimal(1) / Decimal(3))
+maxLn128 = UFix128Max.ln().quantize(fix64Epsilon, rounding='ROUND_DOWN')
+minLn128 = (fix128Epsilon / 2).ln().quantize(fix64Epsilon, rounding='ROUND_DOWN')
 
-# the correction term used in ln() and exp() that equals ln(2) multiplied by 1024
-ln2_term = ln2 * 2**12
 
 # Output Go code
 def go_const(name, value, typ):
@@ -87,9 +86,6 @@ def go_const(name, value, typ):
 
         case 'Fix64' | 'UFix64':
             scaledValue = value * Fix64Scale
-
-        case 'fix64_extra':
-            scaledValue = value * fix64ExtraScale
 
         case 'Fix128' | 'UFix128':
             scaledValue = value * Fix128Scale
@@ -105,14 +101,20 @@ def go_const(name, value, typ):
     intValue = int(scaledValue.to_integral_value(rounding=ROUND_HALF_UP))
 
     if is128:
+        if intValue >= 2**128:
+            raise ValueError(f"Value {value} for {name} exceeds 128-bit range: {intValue}")
+
         decl = 'var'
-        hexString = f"{{0x{(intValue >> 64):016x}, 0x{(intValue & 0xffffffffffffffff):016x}}}"
+        hexString = f"{{0x{(intValue >> 64 & 0xffffffffffffffff):016x}, 0x{(intValue & 0xffffffffffffffff):016x}}}"
         if type != 'raw128':
             hexString = f"raw128{hexString}"
 
     else:
+        if intValue >= 2**64:
+            raise ValueError(f"Value {value} for {name} exceeds 64-bit range: {intValue}")
+
         decl = 'const'
-        hexString = hex(intValue)
+        hexString = f"0x{(intValue & 0xffffffffffffffff):016x}"
 
     return f"{decl} {name} = {typ}({hexString})"
 
@@ -122,53 +124,66 @@ def main():
     print()
     print("// Exported scale constants")
     print(f"const Fix64Scale = {Fix64Scale}")
+    print("const UFix64Zero = UFix64(0)")
+    print("const Fix64Zero = Fix64(0)")
     print("const UFix64One = UFix64(1 * Fix64Scale) // 1 in fix64")
     print("const Fix64One = Fix64(1 * Fix64Scale) // 1 in fix64")
+    print("const UFix64Iota = UFix64(1)")
+    print("const Fix64Iota = Fix64(1)")
+    print(f"const Fix64OneLeadingZeros = {64 - int(Fix64Scale).bit_length()} // Number of leading zero bits for Fix64One")    
     print("const UFix64Max = UFix64(0xffffffffffffffff) // Max value for UFix64")
     print("const Fix64Max = Fix64(0x7fffffffffffffff) // Max value for Fix64")
-    print("const Fix64Min = Fix64(-0x8000000000000000) // Min value for Fix64")
+    print("const Fix64Min = Fix64(0x8000000000000000) // Min value for Fix64")
     print()
     print(f"const Fix128Scale = {Fix128Scale} // NOTE: Bigger than uint64! Mostly here as documentation...")
+    print(go_const('UFix128Zero', Decimal(0), 'UFix128'))
+    print(go_const('Fix128Zero', Decimal(0), 'Fix128'))
+    print(go_const('UFix128One', Decimal(1), 'UFix128'))
     print(go_const('Fix128One', Decimal(1), 'Fix128'))
-    print()
-    print("// Internal scale constants")
-    print(f"const extraBits = {extraBits} // Number of extra bits for fix64_extra and fix128_extra")
-    print(f"const fix64ExtraScale = Fix64Scale << extraBits // {fix64ExtraScale}")
-    print(f"const fix128ExtraScale = {fix128ExtraScale} // NOTE: Bigger than uint64! Mostly here as documentation...")
+    print("var UFix128Iota = UFix128{0, 1}")
+    print("var Fix128Iota = Fix128{0, 1}")
+    print(f"const Fix128OneLeadingZeros = {128 - int(Fix128Scale).bit_length()} // Number of leading zero bits for Fix128One")    
+    print(go_const('UFix128Max', UFix128Max, 'UFix128'))
+    print(go_const('Fix128Max', Fix128Max, 'Fix128'))
+    print(go_const('Fix128Min', Fix128Min, 'Fix128'))
     print()
     print("// Fix64 transcendental constants (see constgen.py for more information)")
-    print(go_const('Fix64_Pi', pi, 'Fix64'))
-    print(go_const('fix64_2Pi', pi * 2, 'Fix64'))
-    print(go_const('fix64_PiOver2', pi / 2, 'Fix64'))
-    print(go_const('fix64_3PiOver2', pi * 3 / 2, 'Fix64'))
-    print(go_const('fix64_TwoPiShifted33', pi * 2 * (2 ** 33), 'Fix64'))
-    print(go_const('fix64_TwoPiMultiple', fix64_TwoPiMultiple, 'Fix64'))
-    print(go_const('ln2_fix64', ln2, 'Fix64'))
-    print(go_const('ufix64_ln2Factor', ufix64_ln2Factor, 'uint64'))
-    print(go_const('ufix64_ln2Multiple', ufix64_ln2Multiple, 'UFix64'))
+    print(go_const('Fix64Pi', pi, 'Fix64'))
+    print(go_const('fix64TrigMultiplier', fix64TrigMultiplier, 'uint64'))
+    print(go_const('fix64TrigScale', fix64TrigMultiplier, 'Fix64'))
+    print(go_const('fix64PiScaled', fix64PiScaled, 'Fix64'))
+    print(go_const('fix64TwoPiScaled', fix64TwoPiScaled, 'Fix64'))
+    print(go_const('fix64HalfPiScaled', fix64HalfPiScaled, 'Fix64'))
+    print(go_const('fix64ThreeHalfPiScaled', fix64ThreeHalfPiScaled, 'Fix64'))
+    print(go_const('fix64SinIotaScaled', fix64SinIotaScaled, 'Fix64'))
     print()
-    print("// Fix128 transcendental constants")
-    print(go_const('Fix128_Pi', pi, 'Fix128'))
-    print(go_const('fix128_2Pi', pi * 2, 'Fix128'))
-    print(go_const('fix128_PiOver2', pi / 2, 'Fix128'))
-    print(go_const('fix128_3PiOver2', pi * 3 / 2, 'Fix128'))
-    # print(go_const128('fix128_TwoPiShifted44', fix128_TwoPiShifted44, 'raw128'))
-    print()
-    print("// fix64_extra constants")
-    print(go_const('fix64_extra_One', Decimal(1), 'fix64_extra'))
-    print(go_const('fix64_extra_Pi', pi, 'fix64_extra'))
-    print(go_const('fix64_extra_2Pi', pi * 2, 'fix64_extra'))
-    print(go_const('fix64_extra_PiOver2', pi / 2, 'fix64_extra'))
-    print(go_const('fix64_extra_3PiOver2', pi * 3 / 2, 'fix64_extra'))
-    print(go_const('fix64_extra_sinIota', fix64_extra_sinIota, 'fix64_extra'))
-    print(go_const('fix64_extra_TwoPiMultiple', fix64_extra_TwoPiMultiple, 'fix64_extra'))
-    print()
-    print("// ln(2) * 1024 at fix64_extra precision, used in ln() and exp()")
-    print(go_const('ln2_fix64_term', ln2_term, 'fix64_extra'))
+    print(go_const('fix64LnMultiplier', fix64LnMultiplier, 'uint64'))
+    print(go_const('fix64LnScale', fix64LnMultiplier, 'Fix64'))
+    print(go_const('ufix64LnScale', fix64LnMultiplier, 'UFix64'))
+    print(go_const('fix64Ln2Scaled', fix64Ln2Scaled, 'Fix64'))
     print()
     print("// Valid logarithm bounds for Fix64")
     print(go_const('maxLn64', maxLn64, 'Fix64'))
     print(go_const('minLn64', minLn64, 'Fix64'))
-
+    print()
+    print("// Fix128 transcendental constants (see constgen.py for more information)")
+    print(go_const('Fix128Pi', pi, 'Fix128'))
+    print(go_const('fix128TrigMultiplier', fix128TrigMultiplier, 'uint64'))
+    print(go_const('fix128TrigScale', fix128TrigMultiplier, 'Fix128'))
+    print(go_const('fix128PiScaled', fix128PiScaled, 'Fix128'))
+    print(go_const('fix128TwoPiScaled', fix128TwoPiScaled, 'Fix128'))
+    print(go_const('fix128HalfPiScaled', fix128HalfPiScaled, 'Fix128'))
+    print(go_const('fix128ThreeHalfPiScaled', fix128ThreeHalfPiScaled, 'Fix128'))
+    print(go_const('fix128SinIotaScaled', fix128SinIotaScaled, 'Fix128'))
+    print()
+    print(go_const('fix128LnMultiplier', fix128LnMultiplier, 'uint64'))
+    print(go_const('fix128LnScale', fix128LnMultiplier, 'Fix128'))
+    print(go_const('ufix128LnScale', fix128LnMultiplier, 'UFix128'))
+    print(go_const('fix128Ln2Scaled', fix128Ln2Scaled, 'Fix128'))
+    print()
+    print("// Valid logarithm bounds for Fix128")
+    print(go_const('maxLn128', maxLn128, 'Fix128'))
+    print(go_const('minLn128', minLn128, 'Fix128'))
+    print()
 if __name__ == "__main__":
     main()

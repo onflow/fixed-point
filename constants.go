@@ -3,49 +3,64 @@ package fixedPoint
 
 // Exported scale constants
 const Fix64Scale = 1E+8
+const UFix64Zero = UFix64(0)
+const Fix64Zero = Fix64(0)
 const UFix64One = UFix64(1 * Fix64Scale) // 1 in fix64
 const Fix64One = Fix64(1 * Fix64Scale) // 1 in fix64
+const UFix64Iota = UFix64(1)
+const Fix64Iota = Fix64(1)
+const Fix64OneLeadingZeros = 37 // Number of leading zero bits for Fix64One
 const UFix64Max = UFix64(0xffffffffffffffff) // Max value for UFix64
 const Fix64Max = Fix64(0x7fffffffffffffff) // Max value for Fix64
-const Fix64Min = Fix64(-0x8000000000000000) // Min value for Fix64
+const Fix64Min = Fix64(0x8000000000000000) // Min value for Fix64
 
 const Fix128Scale = 1E+24 // NOTE: Bigger than uint64! Mostly here as documentation...
+var UFix128Zero = UFix128(raw128{0x0000000000000000, 0x0000000000000000})
+var Fix128Zero = Fix128(raw128{0x0000000000000000, 0x0000000000000000})
+var UFix128One = UFix128(raw128{0x000000000000d3c2, 0x1bcecceda1000000})
 var Fix128One = Fix128(raw128{0x000000000000d3c2, 0x1bcecceda1000000})
-
-// Internal scale constants
-const extraBits = 20 // Number of extra bits for fix64_extra and fix128_extra
-const fix64ExtraScale = Fix64Scale << extraBits // 1.048576E+14
-const fix128ExtraScale = 1.048576E+30 // NOTE: Bigger than uint64! Mostly here as documentation...
+var UFix128Iota = UFix128{0, 1}
+var Fix128Iota = Fix128{0, 1}
+const Fix128OneLeadingZeros = 48 // Number of leading zero bits for Fix128One
+var UFix128Max = UFix128(raw128{0xffffffffffffffff, 0xffffffffffffffff})
+var Fix128Max = Fix128(raw128{0x7fffffffffffffff, 0xffffffffffffffff})
+var Fix128Min = Fix128(raw128{0x8000000000000000, 0x0000000000000000})
 
 // Fix64 transcendental constants (see constgen.py for more information)
-const Fix64_Pi = Fix64(0x12b9b0a1)
-const fix64_2Pi = Fix64(0x25736143)
-const fix64_PiOver2 = Fix64(0x95cd851)
-const fix64_3PiOver2 = Fix64(0x1c1688f2)
-const fix64_TwoPiShifted33 = Fix64(0x4ae6c2856f98469f)
-const fix64_TwoPiMultiple = Fix64(0x5f15fcd702525)
-const ln2_fix64 = Fix64(0x421a89e)
-const ufix64_ln2Factor = uint64(0x5d48ee3c)
-const ufix64_ln2Multiple = UFix64(0x18167911a4f9c9e)
+const Fix64Pi = Fix64(0x0000000012b9b0a1)
+const fix64TrigMultiplier = uint64(0x0000000279bd389f)
+const fix64TrigScale = Fix64(0x0ec1613199eebf00)
+const fix64PiScaled = Fix64(0x2e5afcfaa354bad6)
+const fix64TwoPiScaled = Fix64(0x5cb5f9f546a975ab)
+const fix64HalfPiScaled = Fix64(0x172d7e7d51aa5d6b)
+const fix64ThreeHalfPiScaled = Fix64(0x45887b77f4ff1840)
+const fix64SinIotaScaled = Fix64(0x0000015dcfc36d8a)
 
-// Fix128 transcendental constants
-var Fix128_Pi = Fix128(raw128{0x0000000000029942, 0x1439a0abd72cb0b3})
-var fix128_2Pi = Fix128(raw128{0x0000000000053284, 0x28734157ae596167})
-var fix128_PiOver2 = Fix128(raw128{0x0000000000014ca1, 0x0a1cd055eb96585a})
-var fix128_3PiOver2 = Fix128(raw128{0x000000000003e5e3, 0x1e567101c2c3090d})
-
-// fix64_extra constants
-const fix64_extra_One = fix64_extra(0x5f5e10000000)
-const fix64_extra_Pi = fix64_extra(0x12b9b0a15be61)
-const fix64_extra_2Pi = fix64_extra(0x25736142b7cc2)
-const fix64_extra_PiOver2 = fix64_extra(0x95cd850adf31)
-const fix64_extra_3PiOver2 = fix64_extra(0x1c1688f209d92)
-const fix64_extra_sinIota = fix64_extra(0xf0d74d47)
-const fix64_extra_TwoPiMultiple = fix64_extra(0x43e12048ed2200)
-
-// ln(2) * 1024 at fix64_extra precision, used in ln() and exp()
-const ln2_fix64_term = fix64_extra(0x421a89e0e55a857)
+const fix64LnMultiplier = uint64(0x00000000b8815d3d)
+const fix64LnScale = Fix64(0x044bbcca1f539d00)
+const ufix64LnScale = UFix64(0x044bbcca1f539d00)
+const fix64Ln2Scaled = Fix64(0x02fa47a8c8396307)
 
 // Valid logarithm bounds for Fix64
-const maxLn64 = Fix64(0x9a9e6d19)
-const minLn64 = Fix64(-0x71ed6308)
+const maxLn64 = Fix64(0x000000009a9e6d19)
+const minLn64 = Fix64(0xffffffff8e129cf8)
+
+// Fix128 transcendental constants (see constgen.py for more information)
+var Fix128Pi = Fix128(raw128{0x0000000000029942, 0x1439a0abd72cb0b3})
+const fix128TrigMultiplier = uint64(0x0000161147804d12)
+var fix128TrigScale = Fix128(raw128{0x1240f96c94dc8fdd, 0x37a5622252000000})
+var fix128PiScaled = Fix128(raw128{0x395894ef08902f01, 0xe1211d7fd18c6716})
+var fix128TwoPiScaled = Fix128(raw128{0x72b129de11205e03, 0xc2423affa318ce2b})
+var fix128HalfPiScaled = Fix128(raw128{0x1cac4a7784481780, 0xf0908ebfe8c6338b})
+var fix128ThreeHalfPiScaled = Fix128(raw128{0x5604df668cd84682, 0xd1b1ac3fba529aa0})
+var fix128SinIotaScaled = Fix128(raw128{0x000000000009ffa9, 0x8b68d2ea54f490d7})
+
+const fix128LnMultiplier = uint64(0x00000000b8815d3d)
+var fix128LnScale = Fix128(raw128{0x0000989e85ec9fda, 0xd02f491c5d000000})
+var ufix128LnScale = UFix128(raw128{0x0000989e85ec9fda, 0xd02f491c5d000000})
+var fix128Ln2Scaled = Fix128(raw128{0x000069c99f7a39f6, 0x0f1a1bd1b16aa7a8})
+
+// Valid logarithm bounds for Fix128
+var maxLn128 = Fix128(raw128{0x00000000001bad99, 0x6ed79d2e3e070000})
+var minLn128 = Fix128(raw128{0xffffffffffd1b707, 0x1a9f38566f630000})
+

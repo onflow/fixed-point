@@ -89,9 +89,9 @@ func BenchmarkFMDUFix64(b *testing.B) {
 }
 
 func BenchmarkAbsFix64(b *testing.B) {
-	a := Fix64(-123456789)
+	a := Fix64(0xffffffff00000000)
 	for i := 0; i < b.N; i++ {
-		_ = a.Abs()
+		_, _ = a.Abs()
 	}
 }
 
@@ -102,12 +102,12 @@ func BenchmarkSqrt64(b *testing.B) {
 	}
 }
 
-func BenchmarkSqrt128(b *testing.B) {
-	a := UFix128{234334, 123456789}
-	for i := 0; i < b.N; i++ {
-		_, _ = a.SqrtTest()
-	}
-}
+// func BenchmarkSqrt128(b *testing.B) {
+// 	a := UFix128{234334, 123456789}
+// 	for i := 0; i < b.N; i++ {
+// 		_, _ = a.Sqrt()
+// 	}
+// }
 
 func BenchmarkLnUFix64(b *testing.B) {
 	a := UFix64(123456789)
@@ -123,16 +123,23 @@ func BenchmarkExpFix64(b *testing.B) {
 	}
 }
 
-func BenchmarkLnUFix128(b *testing.B) {
-	a := UFix128{123456789, 987654321}
+// func BenchmarkLnUFix128(b *testing.B) {
+// 	a := UFix128{123456789, 987654321}
+// 	for i := 0; i < b.N; i++ {
+// 		_, _ = a.Ln()
+// 	}
+// }
+
+func BenchmarkSinFix64(b *testing.B) {
+	a := Fix64(123456789)
 	for i := 0; i < b.N; i++ {
-		_, _ = a.Ln()
+		_, _ = a.Sin()
 	}
 }
 
-func BenchmarkSinFix64(b *testing.B) {
-	a := Fix64(40075472476)
+func BenchmarkCosFix64(b *testing.B) {
+	a := Fix64(10000)
 	for i := 0; i < b.N; i++ {
-		_, _ = a.Sin()
+		_, _ = a.Cos()
 	}
 }

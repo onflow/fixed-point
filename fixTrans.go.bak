@@ -174,15 +174,22 @@ func extraToFix128(x fix128_extra) Fix128 {
 }
 
 func (a UFix64) intDiv(other int64) UFix64 {
-	return UFix64(uint64(a) / uint64(other))
+	q := uint64(a) / uint64(other)
+	r := uint64(a) % uint64(other)
+
+	if r > 0x3fffffffffffffff || 2*r >= uint64(other) {
+		q++
+	}
+
+	return UFix64(q)
 }
 
 func (a Fix64) intDiv(other int64) Fix64 {
 	return Fix64(int64(a) / other)
 }
 
-func (a UFix64) intMul(other int64) UFix64 {
-	return UFix64(uint64(a) * uint64(other))
+func (a UFix64) intMul(other uint64) UFix64 {
+	return UFix64(uint64(a) * other)
 }
 
 func (a Fix64) intMul(other int64) Fix64 {
@@ -248,7 +255,7 @@ func (a Fix128) shiftRight(shift uint) Fix128 {
 	return Fix128{Hi: a.Hi >> shift, Lo: (a.Lo >> shift) | (a.Hi << (64 - shift))}
 }
 
-func (a Fix128) shiftLeft(shift uint) Fix128 {
+func (a Fix128) shiftLeft(shift uint64) Fix128 {
 	if shift >= 64 {
 		return Fix128{Hi: a.Lo << (shift - 64), Lo: 0}
 	}
@@ -256,7 +263,7 @@ func (a Fix128) shiftLeft(shift uint) Fix128 {
 	return Fix128{Hi: (a.Hi << shift) | (a.Lo >> (64 - shift)), Lo: a.Lo << shift}
 }
 
-func (a UFix128) shiftRight(shift uint) UFix128 {
+func (a UFix128) shiftRight(shift uint64) UFix128 {
 	if shift >= 64 {
 		// No sign bit this time...
 		return UFix128{Hi: 0, Lo: a.Hi >> (shift - 64)}
@@ -265,12 +272,20 @@ func (a UFix128) shiftRight(shift uint) UFix128 {
 	return UFix128{Hi: a.Hi >> shift, Lo: (a.Lo >> shift) | (a.Hi << (64 - shift))}
 }
 
-func (a UFix128) shiftLeft(shift uint) UFix128 {
+func (a UFix128) shiftLeft(shift uint64) UFix128 {
 	if shift >= 64 {
 		return UFix128{Hi: a.Lo << (shift - 64), Lo: 0}
 	}
 
 	return UFix128{Hi: (a.Hi << shift) | (a.Lo >> (64 - shift)), Lo: a.Lo << shift}
+}
+
+func (a raw128) shiftLeft(shift uint64) raw128 {
+	if shift >= 64 {
+		return raw128{Hi: a.Lo << (shift - 64), Lo: 0}
+	}
+
+	return raw128{Hi: (a.Hi << shift) | (a.Lo >> (64 - shift)), Lo: a.Lo << shift}
 }
 
 func internalSqrt[T FixedPoint[T]](x T, est T) (T, error) {
@@ -484,9 +499,9 @@ func (x UFix128) Ln() (Fix128, error) {
 	shift := k - extraBits
 
 	if shift > 0 {
-		x = x.shiftRight(uint(shift))
+		x = x.shiftRight(uint64(shift))
 	} else if shift < 0 {
-		x = x.shiftLeft(uint(-shift))
+		x = x.shiftLeft(uint64(-shift))
 	}
 
 	// We directly cast here instead of using the conversion function, we take into
@@ -607,266 +622,3 @@ func internalSin[T FixedPoint[T]](x T, pi T, iota T) T {
 
 	return sum
 }
-
-// Normalizes the input angle x to the range [0, π], and returns a flag
-// indicating if the result should be interpreted as negative.
-func clampAngle(x Fix64) (res fix64_extra, isNeg bool) {
-	// The goal of this function is to normalize the input angle x to the range [0, pi], with
-	// a separate flag to indicate if the result should be interpreted as negative. (Separating
-	// out the sign is actually pretty convenient for the calling functions.)
-	var unsignedX uint64
-
-	if x >= 0 {
-		unsignedX = uint64(x)
-		isNeg = false
-	} else {
-		unsignedX = uint64(-x)
-		isNeg = true
-	}
-
-	// If the input is outside the range [0, 2π], we need to normalize it.
-	if unsignedX <= uint64(fix64_2Pi) {
-		// Input is already within the range [0, 2π], we can just shift it
-		// left by the extra bits to convert it to fix64_extra.
-		res = fix64_extra(unsignedX << extraBits)
-	} else {
-		// We know we have a positive value, and need take it modulo 2π. Unfortunately, Fix64 doesn't
-		// have enough precision to accurately represent pi, and for large values of x,
-		// the result of x % 2π will be very inaccurate.
-
-		// This first step is a cheap way to remove a large number of multiples of 2π from the input.
-		// The constant fix64_TwoPiMultiple is a multiple of 2π that is chosen to be VERY
-		// accurate in the space of a Fix64. By chosing a multiple of 2π that has a series
-		// of zeros in the 9th place and beyond, we can have a value that can be stored with
-		// 8 decimal places of precision, but which is accurate to several more decimal places.
-		//
-		// Even better, this constant is less than the maximum value representable as a fix64_extra,
-		// so we can then convert the input to a fix64_extra without worrying about overflow.
-		unsignedX = unsignedX % 646448019151968420
-		unsignedX = unsignedX % uint64(fix64_TwoPiMultiple)
-
-		x_extra := unsignedX << extraBits
-
-		// Now that we are in the range of of a fix64_extra, we can use ANOTHER modulus (similar
-		// to the one above) that minimizes the error at the precision of a fix64_extra. This
-		// constant isn't as obviously "pretty" as the one above (since fix64_extra isn't a neat
-		// multiple of 10), but the same logic applies.
-		x_extra = x_extra % 342709898545259501
-		x_extra = x_extra % uint64(fix64_extra_TwoPiMultiple)
-
-		// Fortunately for us, we have access to a 128/64 bit division function that provides a
-		// remainder. We can scale up the input to a much higher precision and divide it by a constant
-		// that is ALSO a multiple of the fixed-point representation of pi.
-		//
-		// The constant fix64_TwoPiShifted33 is equal to 2π • 10^8 • 2^33. We take the input
-		// value (which is x • 10^8) and scale it up by 2^33 (which is no problem if we extend
-		// the input temporarily to 128 bits). We can then divide this scaled up value our constant to get:
-		//
-		//   x  •  10^8 • 2^33
-		//  -------------------
-		//  2•pi • 10^8 • 2^33
-		//
-		// The remainder of this division will be in the range the remainder of x/2π, scaled up by 10^8 • 2^33.
-		// Since we WANT the remainder to be scaled up by 10^8, we can just shift the result right by 33 bits
-		// to get a result in the range [0, 2π].
-		tempHi := x_extra >> (64 - 21)
-		tempLo := x_extra << 21
-
-		_, scaledRem := bits.Div64(tempHi, tempLo, uint64(fix64_TwoPiShifted33))
-
-		// Shifting right by 33 bits would get the remainder in the range [-2π, 2π] as a Fix64.
-		// However, since we are returning fix64_extra anyway, we can scale it down by
-		// extraBits *fewer* places so keep some additional precision.
-		res = fix64_extra((scaledRem + (1 << 20)) >> 21)
-	}
-
-	// If the angle is greater than π, subract it from 2π to bring it
-	// into the range [0, π] and flip the sign flag.
-
-	if ((fix64_extra_2Pi & 1) != 0) && (res == fix64_extra_Pi+1) {
-		// Weird edge case: if res is exactly fix64_extra_Pi + 1, (where 1 is lowest bit of precision)
-		// AND the value of 2π is odd when converted to a fix64_extra, then subtracting res
-		// (which IS NOT π) from 2π will result in exactly π! We check for this case specifically
-		// and return fix64_Pi - 1 instead.
-		res = fix64_extra_Pi - 1
-		isNeg = !isNeg
-	} else if res > fix64_extra_Pi {
-		res = fix64_extra_2Pi - res
-		isNeg = !isNeg
-	}
-
-	return res, isNeg
-}
-
-func (x Fix64) Sin() (Fix64, error) {
-
-	// Normalize the input angle to the range [0, π], with a flag indicating
-	// if the result should be interpreted as negative.
-	x_extra, isNeg := clampAngle(x)
-
-	if x == 0 {
-		return 0, nil
-	}
-
-	res := extraToFix(internalSin(x_extra, fix64_extra_Pi, fix64_extra_sinIota))
-
-	// sin(-x) = -sin(x)
-	if isNeg {
-		res = res.Neg()
-	}
-
-	return res, nil
-}
-
-func (x Fix64) Cos() (Fix64, error) {
-	if x == 0 {
-		return Fix64One, nil
-	}
-
-	// Ignore the sign since cos(-x) = cos(x)
-	x_extra, _ := clampAngle(x)
-
-	// We use the following identities to compute cos(x):
-	//     cos(x) = sin(π/2 - x)
-	//     cos(x) = -sin(3π/2 − x)
-	// If x is is less than or equal to π/2, we can use the first identity,
-	// if x is greater than π/2, we use the second identity.
-	// In both cases, we end up with a value in the range [0, π], to pass
-	// to internalSin().
-	var y_extra fix64_extra
-	var is_neg bool
-
-	if x_extra <= fix64_extra_PiOver2 {
-		// cos(x) = sin(π/2 - x)
-		y_extra = fix64_extra_PiOver2 - x_extra
-		is_neg = false
-	} else {
-		// cos(x) = -sin(3π/2 − x)
-		y_extra = fix64_extra_3PiOver2 - x_extra
-		is_neg = true
-	}
-
-	res := extraToFix(internalSin(y_extra, fix64_extra_Pi, fix64_extra_sinIota))
-
-	if is_neg {
-		res = res.Neg()
-	}
-
-	return res, nil
-}
-
-// Commented out because tan() is only of speculative value for smart contracts, and getting a bit-accurate value
-// is proving to be VERY complicated. Fundamentally, since tan(x) = sin(x)/cos(x), and cos(x) can be very small
-// the error in tan(x) can be very large, even if sin(x) and cos(x) are accurate to the last bit.
-
-func (x Fix64) Tan() (Fix64, error) {
-
-	sin_x, err := x.Sin()
-	if err != nil {
-		return 0, err
-	}
-	cos_x, err := x.Cos()
-	if err != nil {
-		return 0, err
-	}
-
-	return sin_x.Div(cos_x)
-}
-
-func (x Fix64) TanTest() (Fix64, error) {
-	// tan(x) = sin(x) / cos(x)
-	// We could just use the Sin() and Cos() methods directly, but we'll get better
-	// precision if we call the internalSin() function direclty and divide the result.
-
-	// Normalize the input angle to the range [0, π]
-	x_extra, xNeg := clampAngle(x)
-
-	if x_extra == 0 {
-		return 0, nil
-	}
-
-	if x_extra == fix64_extra_PiOver2 {
-		if !xNeg {
-			// Remember that fix64_extra_PiOver2 is actually an approximation of π/2, and slightly
-			// less. So we return a positive overflow error
-			return 0, ErrOverflow
-		} else {
-			// In this case, we're slightly more positively than -π/2, so we return a negative
-			// overflow error
-			return 0, ErrNegOverflow
-		}
-	}
-
-	// We compute y the same way we did in the cos() function above.
-	var y_extra fix64_extra
-	var is_neg bool
-
-	if x_extra <= fix64_extra_PiOver2 {
-		// cos(x) = sin(π/2 - x)
-		y_extra = fix64_extra_PiOver2 - x_extra
-		is_neg = false
-	} else {
-		// cos(x) = -sin(3π/2 − x)
-		y_extra = fix64_extra_3PiOver2 - x_extra
-		is_neg = true
-	}
-
-	sinX := internalSin(x_extra, fix64_extra_Pi, fix64_extra_sinIota)
-	cosX := internalSin(y_extra, fix64_extra_Pi, fix64_extra_sinIota)
-
-	res_extra, err := sinX.Div(cosX)
-
-	if err != nil {
-		return 0, err
-	}
-
-	if is_neg {
-		res_extra = res_extra.Neg()
-	}
-
-	return extraToFix(res_extra), nil
-}
-
-// func (x Fix64) TanTest2() (Fix64, error) {
-// 	// tan(x) = sin(x) / cos(x)
-// 	// We could just use the Sin() and Cos() methods directly, but we'll get better
-// 	// precision if we call the internalSin() function direclty and divide the result.
-// 	x, xNeg := clampAngle(x)
-
-// 	// Let's check fo values that are very close to π/2 and -π/2, these values should
-// 	// return an overflow error since tan(x) is undefined for these values.
-// 	if x == fix64_PiOver2 {
-// 		if !xNeg {
-// 			// Remember that fix64_PiOver2 is actually an approximation of π/2, and slightly
-// 			// less. So we return a positive overflow error
-// 			return 0, ErrOverflow
-// 		} else {
-// 			// In this case, we're slightly more positively than -π/2, so we return a negative
-// 			// overflow error
-// 			return 0, ErrNegOverflow
-// 		}
-// 	}
-
-// 	x_extra := fixToExtra(x)
-// 	sinx_extra := internalSin(x_extra, fix64_extra_Pi, fix64_extra_sinIota)
-
-// 	// cos(x) = 1 - 2•sin²(x/2)
-// 	sinx_half := internalSin(x_extra.intDiv(2), fix64_extra_Pi, fix64_extra_sinIota)
-// 	sinx_squared, _ := sinx_half.Mul(sinx_half)
-// 	cosx_extra, _ := fix64_ExtraOne.Sub(sinx_squared.intMul(2))
-
-// 	res_extra, err := sinx_extra.Div(cosx_extra)
-
-// 	if err != nil {
-// 		return 0, err
-// 	}
-
-// 	res := extraToFix(res_extra)
-
-// 	if xNeg {
-// 		// tan(-x) = -tan(x)
-// 		res = res.Neg()
-// 	}
-
-// 	return res, nil
-// }

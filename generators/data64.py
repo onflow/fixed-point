@@ -5,7 +5,7 @@ from decimal import Decimal
 import re
 from pipe import Pipe
 
-BaseData = [
+BaseData64 = [
     # Simple cases
     ("", "0"),
     ("", "1"),
@@ -50,7 +50,7 @@ BaseData = [
     ("", "HalfMax - 0.001"),
 ]
 
-ExtraData = [
+ExtraData64 = [
     # The prime factors of UINT64_MAX are 3, 5, 17, 257, 641, 65537, and 6700417
     # The values below are different subsets of those numbers multipled together to
     # create values for which some pairs should multiply to exactly UFix64Max.
@@ -148,10 +148,53 @@ ExtraData = [
     ("e^2", "7.38905610"),
 ]
 
-# A bunch of test data that was generated in early stages of development,
-# which could still useful for testing but not used in the main test suite
-# to save time.
-BonusData = [
+# Additional inputs used for single-argument methods
+BonusData64 = [
+    # Odd multiples of pi/2, used for testing sin/cos/tan
+    ("3/2*pi",  "4.71238898"),
+    ("5/2*pi",  "7.85398163"),
+    ("7/2*pi",  "10.99557428"),
+    ("9/2*pi",  "14.13716694"),
+    ("11/2*pi", "17.27875959"),
+    ("13/2*pi", "20.42035224"),
+    ("15/2*pi", "23.56194490"),
+    ("17/2*pi", "26.70353755"),
+    ("19/2*pi", "29.84513020"),
+
+    # VERY large multiples of pi/2, the largest possible in the space of Fix64
+    ("58717810045/2*pi", "92233720336.12648336"),
+    ("58717810047/2*pi", "92233720339.26807601"),
+    ("58717810049/2*pi", "92233720342.40966867"),
+    ("58717810051/2*pi", "92233720345.55126132"),
+    ("58717810053/2*pi", "92233720348.69285397"),
+    ("58717810055/2*pi", "92233720351.83444663"),
+    ("58717810057/2*pi", "92233720354.97603928"),
+    ("58717810059/2*pi", "92233720358.11763193"),
+    ("58717810061/2*pi", "92233720361.25922459"),
+    ("58717810063/2*pi", "92233720364.40081724"),
+
+    # Values that are close to the boundaries of UFix64 for exp()
+    ("25.1", "25.1"),
+    ("25.2", "25.2"),
+    ("25.3", "25.3"),
+    ("25.4", "25.4"),
+    ("25.5", "25.5"),
+    ("25.6", "25.6"),
+    ("25.7", "25.7"),
+    ("25.8", "25.8"),
+    ("25.9", "25.9"),
+
+    ("18.5", "18.5"),
+    ("18.6", "18.6"),
+    ("18.7", "18.7"),
+    ("18.8", "18.8"),
+    ("18.9", "18.9"),
+    ("19.0", "19.0"),
+    ("19.1", "19.1"),
+
+    # A bunch of test data that was generated in early stages of development,
+    # which could still useful for testing but not used in the main test suite
+    # to save time.
 	("0.000123", "0.000123"),
 	("0.000321", "0.000321"),
 	("0.000456", "0.000456"),
@@ -449,7 +492,7 @@ def isUFix64Value(val):
 
 @Pipe
 def filterUFix64Values(values):
-    return [x for x in values if isUFix64Value(x[1])]
+    return (x for x in values if isUFix64Value(x[1]))
 
 def isFix64Value(val):
     """Check if the value is a valid Fix64 value."""
