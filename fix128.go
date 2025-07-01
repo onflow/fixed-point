@@ -33,6 +33,16 @@ func (a Fix128) Gte(b Fix128) bool   { return !a.Lt(b) }
 // IsNeg returns true if a is negative.
 func (a Fix128) IsNeg() bool { return isNeg128(raw128(a)) }
 
+// Neg returns the additive inverse of a (i.e. -a), or a negative overflow error
+func (a Fix128) Neg() (Fix128, error) {
+	if a == Fix128Min {
+		// Special case: negating the minimum value will overflow.
+		return Fix128Zero, ErrNegOverflow
+	}
+
+	return Fix128(neg128(raw128(a))), nil
+}
+
 // IsZero returns true if a is zero.
 func (a UFix128) IsZero() bool { return isZero128(raw128(a)) }
 func (a Fix128) IsZero() bool  { return isZero128(raw128(a)) }
@@ -62,9 +72,11 @@ func (a Fix128) shiftRight(n uint64) Fix128   { return Fix128(sshiftRight128(raw
 // Add returns the sum of a and b, or an error on overflow.
 func (a UFix128) Add(b UFix128) (UFix128, error) {
 	sum, carry := add128(raw128(a), raw128(b), 0)
+
 	if carry != 0 {
 		return UFix128Zero, ErrOverflow
 	}
+
 	return UFix128(sum), nil
 }
 
@@ -87,9 +99,11 @@ func (a Fix128) Add(b Fix128) (Fix128, error) {
 // Sub returns the difference of a and b, or an error on negative overflow.
 func (a UFix128) Sub(b UFix128) (UFix128, error) {
 	diff, borrow := sub128(raw128(a), raw128(b), 0)
+
 	if borrow != 0 {
 		return UFix128Zero, ErrNegOverflow
 	}
+
 	return UFix128(diff), nil
 }
 
@@ -102,7 +116,7 @@ func (a Fix128) Sub(b Fix128) (Fix128, error) {
 	// Overflow occurs when:
 	// 1. Subtracting a positive from a non-positive results in a positive
 	// 2. Subtracting a negative from a non-negative results in a negative
-	// Subtracting two non-zero values with the same sign can't overflow in a signed int64
+	// Subtracting two, non-zero values with the same sign can't overflow in a signed int64
 	if !a.IsNeg() && b.IsNeg() && res.IsNeg() {
 		return Fix128Zero, ErrOverflow
 	} else if a.IsNeg() && !b.IsNeg() && !res.IsNeg() {
@@ -116,18 +130,41 @@ func (a Fix128) Sub(b Fix128) (Fix128, error) {
 // Note that this method works properly for Fix128Min, which can NOT be represented as a positive Fix128.
 func (a Fix128) Abs() (UFix128, int64) {
 	if a.IsNeg() {
-		// In twos-complement, multiplying "min value" (0x80000...) by -1 is a no-op!
+		// Neg of a raw type equal to "min value" (0x80000...) is a no-op!
 		// And, the correct UNSIGNED value of the absolute value of min value is 0x80000...
-		return UFix128(a.intMul(-1)), -1
+		return UFix128(neg128(raw128(a))), -1
 	}
 
 	return UFix128(a), 1
 }
 
+// ApplySign converts a UFix128 to a Fix128, applying the sign specified by the input.
+func (a UFix128) ApplySign(sign int64) (Fix128, error) {
+	if sign == 1 {
+		if a.Gt(UFix128(Fix128Max)) {
+			return Fix128Zero, ErrOverflow
+		}
+		return Fix128(a), nil
+	} else {
+		// Special case: if the result's sign should be negative and the converted
+		// value is the minimum representable value, we can just return the minimum
+		// value. We need to do this because the comparison against FixMax will fail
+		// below, even thought would be a valid result.
+		if isEqual128(raw128(a), raw128(Fix128Min)) {
+			return Fix128Min, nil
+		}
+		if a.Gt(UFix128(Fix128Max)) {
+			return Fix128Zero, ErrNegOverflow
+		}
+
+		return Fix128(neg128(raw128(a))), nil
+	}
+}
+
 // Mul returns the product of a and b, or an error on overflow or underflow.
 func (a UFix128) Mul(b UFix128) (UFix128, error) {
 	// It might seem strange to implement multiplication in terms of fused multiply-divide,
-	// but it turns out that a simple mulitiplication fixed-point operation needs to both
+	// but it turns out that a simple fixed-point multiplication needs to both
 	// multiply and divide anyway. (Multiply the inputs, and then divide by the scale factor.)
 
 	// Additionally, the logic for handling rounding is REALLY not trivial, so
@@ -227,26 +264,12 @@ func (a Fix128) FMD(b, c Fix128) (Fix128, error) {
 		}
 	}
 
-	// Special case: if the result's sign should be negative and the product is the minimum
-	// representable value, we can just return the minimum value. We need to do this because
-	// the comparison against FixMax will fail below, even thought would be a valid result.
-	if sign < 0 && isEqual128(raw128(res), raw128(Fix128Min)) {
-		return Fix128Min, nil
-	}
-
-	if UFix128(res).Gt(UFix128(Fix128Max)) {
-		if sign < 0 {
-			return Fix128Zero, ErrNegOverflow
-		} else {
-			return Fix128Zero, ErrOverflow
-		}
-	}
-
-	return Fix128(res).intMul(sign), nil
+	return res.ApplySign(sign)
 }
 
-// Sqrt returns the square root of x as a UFix128, or an error if the result cannot be represented.
-// Uses a Newton-Raphson iteration for fast convergence. Returns UFix128Zero for input zero.
+// Sqrt returns the square root of x using Newton-Rhaphson. Note that this
+// method returns an error result for consistency with other methods,
+// but can't actually ever fail...
 func (x UFix128) Sqrt() (UFix128, error) {
 	if x.IsZero() {
 		return UFix128Zero, nil
@@ -309,10 +332,10 @@ func (x UFix128) Sqrt() (UFix128, error) {
 			// the subtraction are both effectively doing math modulo 2^64. Since we know that
 			// the error is less than 2^64, we just ignore those potential "overflows" and
 			// accept that the result will be correct modulo 2^64.
-			_, estLo := mul128(raw128(est), raw128(est))
+			_, estLo := mul128(est, est)
 			estError, _ := sub128(xLo, estLo, 0)
 
-			_, quoLo := mul128(raw128(quo), raw128(quo))
+			_, quoLo := mul128(quo, quo)
 			quoError, _ := sub128(quoLo, xLo, 0)
 
 			if ult128(quoError, estError) {
@@ -322,10 +345,10 @@ func (x UFix128) Sqrt() (UFix128, error) {
 			break
 		} else if isNegIota128(diff) {
 			// Same logic as above, except diff is negative, so quo is smaller
-			_, estLo := mul128(raw128(est), raw128(est))
+			_, estLo := mul128(est, est)
 			estError, _ := sub128(estLo, xLo, 0)
 
-			_, quoLo := mul128(raw128(quo), raw128(quo))
+			_, quoLo := mul128(quo, quo)
 			quoError, _ := sub128(xLo, quoLo, 0)
 
 			if ult128(quoError, estError) {
@@ -338,263 +361,243 @@ func (x UFix128) Sqrt() (UFix128, error) {
 
 		diff = sshiftRight128(diff, 1)
 
-		est, _ = add128(est, raw128(diff), 0)
+		est, _ = add128(est, diff, 0)
 	}
 
 	return UFix128(est), nil
 }
 
-// The inner loop of the Ln() method, factored out into its own function to simplify
-// the cases where the input is small enough that we don't need to actually go through
-// the loop.
-func lnInnerLoop128(xScaled UFix128) Fix128 {
-	// We will compute ln(x) using the approximation:
-	// ln(x) = 2 * (z + z^3/3 + z^5/5 + z^7/7 + ...)
-	// where z = (x - 1) / (x + 1)
+// A utility function to prescale inputs to ln() and pow()
+func (x UFix128) prescale() (UFix128, uint64) {
+	// For very small values, converting to fix192 will lose precision. To avoid this,
+	// we first check to see if the input has more leading zero bits than the
+	// fixed-point representation of 1, and if so, we scale it up by shifting
+	// it left by one less than the difference.
+	prescale := uint64(0)
+	zeros := leadingZeroBits128(raw128(x))
 
-	num, _ := Fix128(xScaled).Sub(fix128LnScale)
-	den, _ := Fix128(xScaled).Add(fix128LnScale)
-	z, err := num.FMD(fix128LnScale, den)
+	if zeros > Fix128OneLeadingZeros {
+		// We need to shift left by enough so that we have one more leading zero bit
+		// than the fixed point representation of 1.
+		prescale = zeros - Fix128OneLeadingZeros - 1
 
-	if err == ErrUnderflow {
-		// If z is too small to represent, we just return 0
-		return Fix128Zero
+		x = x.shiftLeft(prescale)
 	}
 
-	// Precompute z^2 to avoid recomputing it in the loop.
-	z2, err := z.FMD(z, fix128LnScale)
-
-	if err == ErrUnderflow {
-		// If z^2 is too small, we just return 2*z, which is the first term
-		// in the series.
-		return z.intMul(2)
-	}
-
-	term := z
-	sum := z
-	iter := int64(1)
-
-	// Keep iterating until "term" and/or "next" rounds to zero
-	for {
-		// The input to this function is restricted such that this can't overflow
-		term, err = term.FMD(z2, fix128LnScale)
-
-		if err == ErrUnderflow {
-			break
-		}
-
-		next := term.intDiv(iter*2 + 1)
-
-		// intDiv doesn't check for underflow, but a result of zero means
-		// the same thing here
-		if next.IsZero() {
-			break
-		}
-
-		sum, _ = sum.Add(next)
-		iter += 1
-	}
-
-	return sum.intMul(2)
+	return x, prescale
 }
 
-// Ln returns the natural logarithm of x, or an error if x is zero or negative.
 func (x UFix128) Ln() (Fix128, error) {
-	if x.IsZero() {
-		return Fix128Zero, ErrDomain
-	}
+	// Prescale to avoid precision loss when converting to fix192
+	x, prescale := x.prescale()
 
-	// The Taylor expansion of ln(x) converges faster for values closer to 1.
-	// If we scale the input to have exactly the same number of leading zero bits
-	// as FixOne's representation, the input will be between 0.5 and 2 (for the
-	// two fixed-point types we use, it's actually in the range (0.6 - 1.3)).
-	//
-	// For every power of two removed (or added) by this shift, we can add (or subtract)
-	// a multiple of ln(2) at the end to get the final ln() value.
-	leadingZeros := int64(leadingZeroBits128(raw128(x)))
-	k := Fix128OneLeadingZeros - leadingZeros
-
-	var xScaled UFix128
-
-	if k <= 0 {
-		// If k is 0 or negative we want to shift the input to the left
-		// (i.e multiply). No worries about losing precision or overflowing
-		// here: k can only be negative if the input is less than one. We just
-		// shift the input left by -k bits and multiply by fix128LnMultiplier
-		shifted := UFix128(x).shiftLeft(uint64(-k))
-		xScaled = shifted.intMul(fix128LnMultiplier)
-	} else {
-		// If k is positive, we want to divide the input by 2^k, but if we just
-		// shift x to the right, we could lose precision. Instead, we use our
-		// FMD function to scale the input up by fix128LnMultiplier at the same time
-		// as scaling it down by 2^k.
-		xScaled, _ = x.FMD(UFix128(unscaledRaw128(fix128LnMultiplier)), UFix128Iota.shiftLeft(uint64(k)))
-	}
-
-	resScaled := lnInnerLoop128(xScaled)
-
-	// Add/subtract as many ln(2)s as required to account for the scaling by 2^k we
-	// did above. Note that k*ln2 must strictly lie between minLn and maxLn constants
-	// and we chose ln2Multiple and ln2Factor so they can't overflow when multiplied
-	// by values in that range.
-	powerCorrection := fix128Ln2Scaled.intMul(k)
-
-	resScaled, err := resScaled.Add(powerCorrection)
+	// TODO: x192.ln() provides a ton of precision that we don't need, it
+	// would be ideal if we could pass an error limit to it so it could
+	// stop early when we don't need the full precision.
+	res192, err := x.toFix192().ln(prescale)
 
 	if err != nil {
 		return Fix128Zero, err
 	}
 
-	// Divide out lnScale to get the final result.
-	return resScaled.Div(fix128LnScale)
+	return res192.toFix128()
 }
 
-// clampAngle normalizes the input angle x to the range [0, π], returning the normalized value
-// and a flag indicating if the result should be interpreted as negative. The output is scaled
-// up by fix128TrigScale. Used by Sin(), Cos() and Tan().
-func clampAngle128(x Fix128) (Fix128, bool) {
-	// The goal of this function is to normalize the input angle x to the range [0, π], with
-	// a separate flag to indicate if the result should be interpreted as negative. (Separating
-	// out the sign is actually pretty convenient for the calling functions; sin applies the sign
-	// after running the Taylor expansion, and cos just throws it away!)
-	var unsignedX raw128
-	var isNeg bool
-
-	if !x.IsNeg() {
-		unsignedX = raw128(x)
-		isNeg = false
-	} else {
-		unsignedX = raw128(x.intMul(-1))
-		isNeg = true
+// Exp(x) returns e^x, or an error on overflow or underflow. Note that although the
+// input is a Fix128, the output is a UFix128, since e^x is always positive.
+func (x Fix128) Exp() (UFix128, error) {
+	// If x is 0, return 1.
+	if x.IsZero() {
+		return UFix128One, nil
 	}
 
-	// Multiply the input by fix128TrigMultiplier
-	hi, lo := mul128(unsignedX, unscaledRaw128(fix128TrigMultiplier))
-
-	// Take the scaled up value, and compute the remainder when divided by 2π (at the same scale)
-	_, rem := div128(hi, lo, raw128(fix128TwoPiScaled))
-
-	// rem is now the input angle, modulo 2π, scaled up to fix128TrigScale. If the angle is greater
-	// than π, subtract it from 2π to bring it into the range [0, π] and flip the sign flag.
-	if ult128(raw128(fix128PiScaled), rem) {
-		rem, _ = sub128(raw128(fix128TwoPiScaled), rem, 0)
-		isNeg = !isNeg
+	// We can quickly check to see if the input will overflow or underflow
+	if x.Gt(maxLn128) {
+		return UFix128Zero, ErrOverflow
+	} else if x.Lt(minLn128) {
+		return UFix128Zero, ErrUnderflow
 	}
 
-	return Fix128(rem), isNeg
+	// Use the fix192 implementation of Exp
+	res192, err := x.toFix192().exp()
+
+	if err != nil {
+		return UFix128Zero, err
+	}
+
+	return res192.toUFix128()
 }
 
-// scaledSin returns sin(x), assuming x has already been normalized to [0, π] and scaled up
-// by fix128TrigScale (i.e. has gone through clampAngle).
-func (xScaled Fix128) innerSin128() (Fix128, error) {
-	// Leverage the identity sin(x) = sin(π - x) to keep the input angle
-	// in the range [0, π/2]. This is useful because the Taylor expansion for sin(x)
-	// converges faster for smaller values of x
-	if xScaled.Gt(fix128HalfPiScaled) {
-		xScaled, _ = fix128PiScaled.Sub(xScaled)
+func (a UFix128) Pow(b Fix128) (UFix128, error) {
+	// We accept 0^0 as 1.
+	if b.IsZero() {
+		return UFix128One, nil
 	}
 
-	if xScaled.Lte(fix128SinIotaScaled) {
-		// If x is very small, we can just return x since sin(x) is linear for small x.
-		return xScaled, nil
-	}
-
-	// sin(x) = x - x^3/3! + x^5/5! - x^7/7! + ...
-	xSquared, _ := xScaled.FMD(xScaled, fix128TrigScale)
-
-	sum := xScaled
-	term := xScaled
-	iter := int64(1)
-
-	for {
-		var err error
-
-		term = term.intMul(-1) // Alternate the sign of the term
-
-		term, err = term.FMD(xSquared, fix128TrigScale)
-
-		if err == ErrUnderflow {
-			break
+	if a.IsZero() {
+		if b.IsNeg() {
+			// 0^negative is undefined, so we return an error.
+			return UFix128Zero, ErrDivByZero // 0^negative is undefined
+		} else {
+			// 0^positive is 0.
+			return UFix128Zero, nil
 		}
-
-		term = term.intDiv((iter + 1) * (iter + 2))
-		if term.IsZero() {
-			break
-		}
-
-		iter += 2
-
-		// Both sum and term are always close to zero, so we don't need to worry
-		// about overflow
-		sum, _ = sum.Add(term)
 	}
 
-	return sum, nil
+	if a.Eq(UFix128One) {
+		// 1^b is always 1, so we can return it directly.
+		return UFix128One, nil
+	}
+
+	// a^1 is just a, so we can return it directly.
+	if b.Eq(Fix128One) {
+		return a, nil
+	}
+
+	// Prescale the base to avoid precision loss when converting to fix192
+	a, prescale := a.prescale()
+
+	a192 := a.toFix192()
+	b192 := b.toFix192()
+
+	res192, err := a192.pow(b192, prescale)
+
+	if err != nil {
+		return UFix128Zero, err
+	}
+
+	return res192.toUFix128()
+}
+
+func trigResult128(res192 fix192, err error) (Fix128, error) {
+	if err != nil {
+		return Fix128Zero, err
+	}
+
+	res, err := res192.toFix128()
+
+	if err == ErrUnderflow {
+		// For trig underflows, we just return 0.
+		return Fix128Zero, nil
+	} else if err != nil {
+		return Fix128Zero, err
+	}
+
+	return res, nil
 }
 
 func (x Fix128) Sin() (Fix128, error) {
-	// Normalize the input angle to the range [0, π], with a flag indicating
-	// if the result should be interpreted as negative.
-	x_scaled, isNeg := clampAngle128(x)
+	return trigResult128(x.toFix192().sin())
+}
 
-	if x_scaled.IsZero() {
-		return Fix128Zero, nil
-	}
+func (x Fix128) Cos() (Fix128, error) {
+	return trigResult128(x.toFix192().cos())
+}
 
-	res_scaled, err := x_scaled.innerSin128()
+func (x Fix128) Tan() (Fix128, error) {
+	// Unlike with sin and cos, we want tan() to return an underflow error
+	// TODO: Do we really? :laughing:
+	res, err := x.toFix192().tan()
+
 	if err != nil {
 		return Fix128Zero, err
 	}
 
-	res, _ := res_scaled.Div(fix128TrigScale)
-
-	// sin(-x) = -sin(x)
-	if isNeg {
-		res = res.intMul(-1)
-	}
-
-	return res, nil
+	return res.toFix128()
 }
 
 // Cos returns the cosine of x (in radians).
-func (x Fix128) Cos() (Fix128, error) {
-	// Ignore the sign since cos(-x) = cos(x)
-	xScaled, _ := clampAngle128(x)
+// func (x Fix128) Cos() (Fix128, error) {
+// 	// Ignore the sign since cos(-x) = cos(x)
+// 	xScaled, _ := clampAngle128(x)
 
-	if xScaled.IsZero() {
-		return Fix128One, nil // cos(0) = 1
-	}
+// 	if xScaled.IsZero() {
+// 		return Fix128One, nil // cos(0) = 1
+// 	}
 
-	// We use the following identities to compute cos(x):
-	//     cos(x) = sin(π/2 - x)
-	//     cos(x) = -sin(3π/2 − x)
-	// If x is is less than or equal to π/2, we can use the first identity,
-	// if x is greater than π/2, we use the second identity.
-	// In both cases, we end up with a value in the range [0, π], to pass
-	// to scaledSin().
-	var yScaled Fix128
-	var isNeg bool
+// 	// We use the following identities to compute cos(x):
+// 	//     cos(x) = sin(π/2 - x)
+// 	//     cos(x) = -sin(3π/2 − x)
+// 	// If x is is less than or equal to π/2, we can use the first identity,
+// 	// if x is greater than π/2, we use the second identity.
+// 	// In both cases, we end up with a value in the range [0, π], to pass
+// 	// to scaledSin().
+// 	var yScaled UFix128
+// 	var sign int64
 
-	if xScaled.Lt(fix128HalfPiScaled) {
-		// cos(x) = sin(π/2 - x)
-		yScaled, _ = fix128HalfPiScaled.Sub(xScaled)
-		isNeg = false
-	} else {
-		// cos(x) = -sin(3π/2 − x)
-		yScaled, _ = fix128ThreeHalfPiScaled.Sub(xScaled)
-		isNeg = true
-	}
+// 	if xScaled.Lt(ufix128HalfPiScaled) {
+// 		// cos(x) = sin(π/2 - x)
+// 		yScaled, _ = ufix128HalfPiScaled.Sub(xScaled)
+// 		sign = 1
+// 	} else {
+// 		// cos(x) = -sin(3π/2 − x)
+// 		yScaled, _ = ufix128ThreeHalfPiScaled.Sub(xScaled)
+// 		sign = -1
+// 	}
 
-	resScaled, err := yScaled.innerSin128()
-	if err != nil {
-		return Fix128Zero, err
-	}
+// 	resScaled, err := yScaled.innerSin128()
+// 	if err != nil {
+// 		return Fix128Zero, err
+// 	}
 
-	res, _ := resScaled.Div(fix128TrigScale)
+// 	res, _ := resScaled.Div(fix128TrigScale)
 
-	if isNeg {
-		res = res.intMul(-1)
-	}
+// 	res = res.intMul(sign)
 
-	return res, nil
-}
+// 	return res, nil
+// }
+
+// Tan returns the tangent of x (in radians).
+// func (x Fix128) Tan() (Fix128, error) {
+// tan(x) = sin(x) / cos(x)
+// We can't use the Sin() and Cos() methods directly because they don't provide
+// enough precision once we divide the results.
+
+// Normalize the input angle to the range [0, π]
+// xScaled, sign := clampAngle128(x)
+
+// if xScaled.IsZero() {
+// 	return Fix128Zero, nil
+// }
+// // We compute y the same way we did in the cos() function above.
+// var yScaled UFix128
+
+// if xScaled.Lt(ufix128HalfPiScaled) {
+// 	// cos(x) = sin(π/2 - x)
+// 	yScaled, _ = ufix128HalfPiScaled.Sub(xScaled)
+// } else {
+// 	// cos(x) = -sin(3π/2 − x)
+// 	yScaled, _ = ufix128ThreeHalfPiScaled.Sub(xScaled)
+// 	sign *= -1
+// }
+
+// sinX, err := xScaled.innerSin128()
+// if err != nil {
+// 	return Fix128Zero, err
+// }
+
+// cosX, err := yScaled.innerSin128()
+// if err != nil {
+// 	return Fix128Zero, err
+// }
+
+// res, err := sinX.FMD(Fix128One, cosX)
+
+// if err != nil {
+// 	return Fix128Zero, err
+// }
+
+// // if res > Fix128(5e15) {
+// // 	if sign < 0 {
+// // 		// If the result is too large and negative, we return a negative overflow error
+// // 		return 0, ErrNegOverflow
+// // 	} else {
+// // 		// If the result is too large and positive, we return a positive overflow error
+// // 		return 0, ErrOverflow
+// // 	}
+// // }
+
+// res = res.intMul(sign)
+
+// return res, nil
+// }

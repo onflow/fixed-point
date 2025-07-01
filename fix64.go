@@ -32,6 +32,16 @@ func (a Fix64) Gte(b Fix64) bool   { return !a.Lt(b) }
 // IsNeg returns true if a is negative.
 func (a Fix64) IsNeg() bool { return isNeg64(raw64(a)) }
 
+// Neg returns the additive inverse of a (i.e. -a), or a negative overflow error
+func (a Fix64) Neg() (Fix64, error) {
+	if a == Fix64Min {
+		// Special case: negating the minimum value will overflow.
+		return Fix64Zero, ErrNegOverflow
+	}
+
+	return Fix64(neg64(raw64(a))), nil
+}
+
 // IsZero returns true if a is zero.
 func (a UFix64) IsZero() bool { return isZero64(raw64(a)) }
 func (a Fix64) IsZero() bool  { return isZero64(raw64(a)) }
@@ -61,9 +71,11 @@ func (a Fix64) shiftRight(n uint64) Fix64   { return Fix64(sshiftRight64(raw64(a
 // Add returns the sum of a and b, or an error on overflow.
 func (a UFix64) Add(b UFix64) (UFix64, error) {
 	sum, carry := add64(raw64(a), raw64(b), 0)
+
 	if carry != 0 {
 		return UFix64Zero, ErrOverflow
 	}
+
 	return UFix64(sum), nil
 }
 
@@ -86,9 +98,11 @@ func (a Fix64) Add(b Fix64) (Fix64, error) {
 // Sub returns the difference of a and b, or an error on negative overflow.
 func (a UFix64) Sub(b UFix64) (UFix64, error) {
 	diff, borrow := sub64(raw64(a), raw64(b), 0)
+
 	if borrow != 0 {
 		return UFix64Zero, ErrNegOverflow
 	}
+
 	return UFix64(diff), nil
 }
 
@@ -101,7 +115,7 @@ func (a Fix64) Sub(b Fix64) (Fix64, error) {
 	// Overflow occurs when:
 	// 1. Subtracting a positive from a non-positive results in a positive
 	// 2. Subtracting a negative from a non-negative results in a negative
-	// Subtracting two non-zero values with the same sign can't overflow in a signed int64
+	// Subtracting two, non-zero values with the same sign can't overflow in a signed int64
 	if !a.IsNeg() && b.IsNeg() && res.IsNeg() {
 		return Fix64Zero, ErrOverflow
 	} else if a.IsNeg() && !b.IsNeg() && !res.IsNeg() {
@@ -115,18 +129,41 @@ func (a Fix64) Sub(b Fix64) (Fix64, error) {
 // Note that this method works properly for Fix64Min, which can NOT be represented as a positive Fix64.
 func (a Fix64) Abs() (UFix64, int64) {
 	if a.IsNeg() {
-		// In twos-complement, multiplying "min value" (0x80000...) by -1 is a no-op!
+		// Neg of a raw type equal to "min value" (0x80000...) is a no-op!
 		// And, the correct UNSIGNED value of the absolute value of min value is 0x80000...
-		return UFix64(a.intMul(-1)), -1
+		return UFix64(neg64(raw64(a))), -1
 	}
 
 	return UFix64(a), 1
 }
 
+// ApplySign converts a UFix64 to a Fix64, applying the sign specified by the input.
+func (a UFix64) ApplySign(sign int64) (Fix64, error) {
+	if sign == 1 {
+		if a.Gt(UFix64(Fix64Max)) {
+			return Fix64Zero, ErrOverflow
+		}
+		return Fix64(a), nil
+	} else {
+		// Special case: if the result's sign should be negative and the converted
+		// value is the minimum representable value, we can just return the minimum
+		// value. We need to do this because the comparison against FixMax will fail
+		// below, even thought would be a valid result.
+		if isEqual64(raw64(a), raw64(Fix64Min)) {
+			return Fix64Min, nil
+		}
+		if a.Gt(UFix64(Fix64Max)) {
+			return Fix64Zero, ErrNegOverflow
+		}
+
+		return Fix64(neg64(raw64(a))), nil
+	}
+}
+
 // Mul returns the product of a and b, or an error on overflow or underflow.
 func (a UFix64) Mul(b UFix64) (UFix64, error) {
 	// It might seem strange to implement multiplication in terms of fused multiply-divide,
-	// but it turns out that a simple mulitiplication fixed-point operation needs to both
+	// but it turns out that a simple fixed-point multiplication needs to both
 	// multiply and divide anyway. (Multiply the inputs, and then divide by the scale factor.)
 
 	// Additionally, the logic for handling rounding is REALLY not trivial, so
@@ -226,26 +263,12 @@ func (a Fix64) FMD(b, c Fix64) (Fix64, error) {
 		}
 	}
 
-	// Special case: if the result's sign should be negative and the product is the minimum
-	// representable value, we can just return the minimum value. We need to do this because
-	// the comparison against FixMax will fail below, even thought would be a valid result.
-	if sign < 0 && isEqual64(raw64(res), raw64(Fix64Min)) {
-		return Fix64Min, nil
-	}
-
-	if UFix64(res).Gt(UFix64(Fix64Max)) {
-		if sign < 0 {
-			return Fix64Zero, ErrNegOverflow
-		} else {
-			return Fix64Zero, ErrOverflow
-		}
-	}
-
-	return Fix64(res).intMul(sign), nil
+	return res.ApplySign(sign)
 }
 
-// Sqrt returns the square root of x as a UFix64, or an error if the result cannot be represented.
-// Uses a Newton-Raphson iteration for fast convergence. Returns UFix64Zero for input zero.
+// Sqrt returns the square root of x using Newton-Rhaphson. Note that this
+// method returns an error result for consistency with other methods,
+// but can't actually ever fail...
 func (x UFix64) Sqrt() (UFix64, error) {
 	if x.IsZero() {
 		return UFix64Zero, nil
@@ -308,10 +331,10 @@ func (x UFix64) Sqrt() (UFix64, error) {
 			// the subtraction are both effectively doing math modulo 2^64. Since we know that
 			// the error is less than 2^64, we just ignore those potential "overflows" and
 			// accept that the result will be correct modulo 2^64.
-			_, estLo := mul64(raw64(est), raw64(est))
+			_, estLo := mul64(est, est)
 			estError, _ := sub64(xLo, estLo, 0)
 
-			_, quoLo := mul64(raw64(quo), raw64(quo))
+			_, quoLo := mul64(quo, quo)
 			quoError, _ := sub64(quoLo, xLo, 0)
 
 			if ult64(quoError, estError) {
@@ -321,10 +344,10 @@ func (x UFix64) Sqrt() (UFix64, error) {
 			break
 		} else if isNegIota64(diff) {
 			// Same logic as above, except diff is negative, so quo is smaller
-			_, estLo := mul64(raw64(est), raw64(est))
+			_, estLo := mul64(est, est)
 			estError, _ := sub64(estLo, xLo, 0)
 
-			_, quoLo := mul64(raw64(quo), raw64(quo))
+			_, quoLo := mul64(quo, quo)
 			quoError, _ := sub64(xLo, quoLo, 0)
 
 			if ult64(quoError, estError) {
@@ -337,263 +360,243 @@ func (x UFix64) Sqrt() (UFix64, error) {
 
 		diff = sshiftRight64(diff, 1)
 
-		est, _ = add64(est, raw64(diff), 0)
+		est, _ = add64(est, diff, 0)
 	}
 
 	return UFix64(est), nil
 }
 
-// The inner loop of the Ln() method, factored out into its own function to simplify
-// the cases where the input is small enough that we don't need to actually go through
-// the loop.
-func lnInnerLoop64(xScaled UFix64) Fix64 {
-	// We will compute ln(x) using the approximation:
-	// ln(x) = 2 * (z + z^3/3 + z^5/5 + z^7/7 + ...)
-	// where z = (x - 1) / (x + 1)
+// A utility function to prescale inputs to ln() and pow()
+func (x UFix64) prescale() (UFix64, uint64) {
+	// For very small values, converting to fix192 will lose precision. To avoid this,
+	// we first check to see if the input has more leading zero bits than the
+	// fixed-point representation of 1, and if so, we scale it up by shifting
+	// it left by one less than the difference.
+	prescale := uint64(0)
+	zeros := leadingZeroBits64(raw64(x))
 
-	num, _ := Fix64(xScaled).Sub(fix64LnScale)
-	den, _ := Fix64(xScaled).Add(fix64LnScale)
-	z, err := num.FMD(fix64LnScale, den)
+	if zeros > Fix64OneLeadingZeros {
+		// We need to shift left by enough so that we have one more leading zero bit
+		// than the fixed point representation of 1.
+		prescale = zeros - Fix64OneLeadingZeros - 1
 
-	if err == ErrUnderflow {
-		// If z is too small to represent, we just return 0
-		return Fix64Zero
+		x = x.shiftLeft(prescale)
 	}
 
-	// Precompute z^2 to avoid recomputing it in the loop.
-	z2, err := z.FMD(z, fix64LnScale)
-
-	if err == ErrUnderflow {
-		// If z^2 is too small, we just return 2*z, which is the first term
-		// in the series.
-		return z.intMul(2)
-	}
-
-	term := z
-	sum := z
-	iter := int64(1)
-
-	// Keep iterating until "term" and/or "next" rounds to zero
-	for {
-		// The input to this function is restricted such that this can't overflow
-		term, err = term.FMD(z2, fix64LnScale)
-
-		if err == ErrUnderflow {
-			break
-		}
-
-		next := term.intDiv(iter*2 + 1)
-
-		// intDiv doesn't check for underflow, but a result of zero means
-		// the same thing here
-		if next.IsZero() {
-			break
-		}
-
-		sum, _ = sum.Add(next)
-		iter += 1
-	}
-
-	return sum.intMul(2)
+	return x, prescale
 }
 
-// Ln returns the natural logarithm of x, or an error if x is zero or negative.
 func (x UFix64) Ln() (Fix64, error) {
-	if x.IsZero() {
-		return Fix64Zero, ErrDomain
-	}
+	// Prescale to avoid precision loss when converting to fix192
+	x, prescale := x.prescale()
 
-	// The Taylor expansion of ln(x) converges faster for values closer to 1.
-	// If we scale the input to have exactly the same number of leading zero bits
-	// as FixOne's representation, the input will be between 0.5 and 2 (for the
-	// two fixed-point types we use, it's actually in the range (0.6 - 1.3)).
-	//
-	// For every power of two removed (or added) by this shift, we can add (or subtract)
-	// a multiple of ln(2) at the end to get the final ln() value.
-	leadingZeros := int64(leadingZeroBits64(raw64(x)))
-	k := Fix64OneLeadingZeros - leadingZeros
-
-	var xScaled UFix64
-
-	if k <= 0 {
-		// If k is 0 or negative we want to shift the input to the left
-		// (i.e multiply). No worries about losing precision or overflowing
-		// here: k can only be negative if the input is less than one. We just
-		// shift the input left by -k bits and multiply by fix64LnMultiplier
-		shifted := UFix64(x).shiftLeft(uint64(-k))
-		xScaled = shifted.intMul(fix64LnMultiplier)
-	} else {
-		// If k is positive, we want to divide the input by 2^k, but if we just
-		// shift x to the right, we could lose precision. Instead, we use our
-		// FMD function to scale the input up by fix64LnMultiplier at the same time
-		// as scaling it down by 2^k.
-		xScaled, _ = x.FMD(UFix64(unscaledRaw64(fix64LnMultiplier)), UFix64Iota.shiftLeft(uint64(k)))
-	}
-
-	resScaled := lnInnerLoop64(xScaled)
-
-	// Add/subtract as many ln(2)s as required to account for the scaling by 2^k we
-	// did above. Note that k*ln2 must strictly lie between minLn and maxLn constants
-	// and we chose ln2Multiple and ln2Factor so they can't overflow when multiplied
-	// by values in that range.
-	powerCorrection := fix64Ln2Scaled.intMul(k)
-
-	resScaled, err := resScaled.Add(powerCorrection)
+	// TODO: x192.ln() provides a ton of precision that we don't need, it
+	// would be ideal if we could pass an error limit to it so it could
+	// stop early when we don't need the full precision.
+	res192, err := x.toFix192().ln(prescale)
 
 	if err != nil {
 		return Fix64Zero, err
 	}
 
-	// Divide out lnScale to get the final result.
-	return resScaled.Div(fix64LnScale)
+	return res192.toFix64()
 }
 
-// clampAngle normalizes the input angle x to the range [0, π], returning the normalized value
-// and a flag indicating if the result should be interpreted as negative. The output is scaled
-// up by fix64TrigScale. Used by Sin(), Cos() and Tan().
-func clampAngle64(x Fix64) (Fix64, bool) {
-	// The goal of this function is to normalize the input angle x to the range [0, π], with
-	// a separate flag to indicate if the result should be interpreted as negative. (Separating
-	// out the sign is actually pretty convenient for the calling functions; sin applies the sign
-	// after running the Taylor expansion, and cos just throws it away!)
-	var unsignedX raw64
-	var isNeg bool
-
-	if !x.IsNeg() {
-		unsignedX = raw64(x)
-		isNeg = false
-	} else {
-		unsignedX = raw64(x.intMul(-1))
-		isNeg = true
+// Exp(x) returns e^x, or an error on overflow or underflow. Note that although the
+// input is a Fix64, the output is a UFix64, since e^x is always positive.
+func (x Fix64) Exp() (UFix64, error) {
+	// If x is 0, return 1.
+	if x.IsZero() {
+		return UFix64One, nil
 	}
 
-	// Multiply the input by fix64TrigMultiplier
-	hi, lo := mul64(unsignedX, unscaledRaw64(fix64TrigMultiplier))
-
-	// Take the scaled up value, and compute the remainder when divided by 2π (at the same scale)
-	_, rem := div64(hi, lo, raw64(fix64TwoPiScaled))
-
-	// rem is now the input angle, modulo 2π, scaled up to fix64TrigScale. If the angle is greater
-	// than π, subtract it from 2π to bring it into the range [0, π] and flip the sign flag.
-	if ult64(raw64(fix64PiScaled), rem) {
-		rem, _ = sub64(raw64(fix64TwoPiScaled), rem, 0)
-		isNeg = !isNeg
+	// We can quickly check to see if the input will overflow or underflow
+	if x.Gt(maxLn64) {
+		return UFix64Zero, ErrOverflow
+	} else if x.Lt(minLn64) {
+		return UFix64Zero, ErrUnderflow
 	}
 
-	return Fix64(rem), isNeg
+	// Use the fix192 implementation of Exp
+	res192, err := x.toFix192().exp()
+
+	if err != nil {
+		return UFix64Zero, err
+	}
+
+	return res192.toUFix64()
 }
 
-// scaledSin returns sin(x), assuming x has already been normalized to [0, π] and scaled up
-// by fix64TrigScale (i.e. has gone through clampAngle).
-func (xScaled Fix64) innerSin64() (Fix64, error) {
-	// Leverage the identity sin(x) = sin(π - x) to keep the input angle
-	// in the range [0, π/2]. This is useful because the Taylor expansion for sin(x)
-	// converges faster for smaller values of x
-	if xScaled.Gt(fix64HalfPiScaled) {
-		xScaled, _ = fix64PiScaled.Sub(xScaled)
+func (a UFix64) Pow(b Fix64) (UFix64, error) {
+	// We accept 0^0 as 1.
+	if b.IsZero() {
+		return UFix64One, nil
 	}
 
-	if xScaled.Lte(fix64SinIotaScaled) {
-		// If x is very small, we can just return x since sin(x) is linear for small x.
-		return xScaled, nil
-	}
-
-	// sin(x) = x - x^3/3! + x^5/5! - x^7/7! + ...
-	xSquared, _ := xScaled.FMD(xScaled, fix64TrigScale)
-
-	sum := xScaled
-	term := xScaled
-	iter := int64(1)
-
-	for {
-		var err error
-
-		term = term.intMul(-1) // Alternate the sign of the term
-
-		term, err = term.FMD(xSquared, fix64TrigScale)
-
-		if err == ErrUnderflow {
-			break
+	if a.IsZero() {
+		if b.IsNeg() {
+			// 0^negative is undefined, so we return an error.
+			return UFix64Zero, ErrDivByZero // 0^negative is undefined
+		} else {
+			// 0^positive is 0.
+			return UFix64Zero, nil
 		}
-
-		term = term.intDiv((iter + 1) * (iter + 2))
-		if term.IsZero() {
-			break
-		}
-
-		iter += 2
-
-		// Both sum and term are always close to zero, so we don't need to worry
-		// about overflow
-		sum, _ = sum.Add(term)
 	}
 
-	return sum, nil
+	if a.Eq(UFix64One) {
+		// 1^b is always 1, so we can return it directly.
+		return UFix64One, nil
+	}
+
+	// a^1 is just a, so we can return it directly.
+	if b.Eq(Fix64One) {
+		return a, nil
+	}
+
+	// Prescale the base to avoid precision loss when converting to fix192
+	a, prescale := a.prescale()
+
+	a192 := a.toFix192()
+	b192 := b.toFix192()
+
+	res192, err := a192.pow(b192, prescale)
+
+	if err != nil {
+		return UFix64Zero, err
+	}
+
+	return res192.toUFix64()
+}
+
+func trigResult64(res192 fix192, err error) (Fix64, error) {
+	if err != nil {
+		return Fix64Zero, err
+	}
+
+	res, err := res192.toFix64()
+
+	if err == ErrUnderflow {
+		// For trig underflows, we just return 0.
+		return Fix64Zero, nil
+	} else if err != nil {
+		return Fix64Zero, err
+	}
+
+	return res, nil
 }
 
 func (x Fix64) Sin() (Fix64, error) {
-	// Normalize the input angle to the range [0, π], with a flag indicating
-	// if the result should be interpreted as negative.
-	x_scaled, isNeg := clampAngle64(x)
+	return trigResult64(x.toFix192().sin())
+}
 
-	if x_scaled.IsZero() {
-		return Fix64Zero, nil
-	}
+func (x Fix64) Cos() (Fix64, error) {
+	return trigResult64(x.toFix192().cos())
+}
 
-	res_scaled, err := x_scaled.innerSin64()
+func (x Fix64) Tan() (Fix64, error) {
+	// Unlike with sin and cos, we want tan() to return an underflow error
+	// TODO: Do we really? :laughing:
+	res, err := x.toFix192().tan()
+
 	if err != nil {
 		return Fix64Zero, err
 	}
 
-	res, _ := res_scaled.Div(fix64TrigScale)
-
-	// sin(-x) = -sin(x)
-	if isNeg {
-		res = res.intMul(-1)
-	}
-
-	return res, nil
+	return res.toFix64()
 }
 
 // Cos returns the cosine of x (in radians).
-func (x Fix64) Cos() (Fix64, error) {
-	// Ignore the sign since cos(-x) = cos(x)
-	xScaled, _ := clampAngle64(x)
+// func (x Fix64) Cos() (Fix64, error) {
+// 	// Ignore the sign since cos(-x) = cos(x)
+// 	xScaled, _ := clampAngle64(x)
 
-	if xScaled.IsZero() {
-		return Fix64One, nil // cos(0) = 1
-	}
+// 	if xScaled.IsZero() {
+// 		return Fix64One, nil // cos(0) = 1
+// 	}
 
-	// We use the following identities to compute cos(x):
-	//     cos(x) = sin(π/2 - x)
-	//     cos(x) = -sin(3π/2 − x)
-	// If x is is less than or equal to π/2, we can use the first identity,
-	// if x is greater than π/2, we use the second identity.
-	// In both cases, we end up with a value in the range [0, π], to pass
-	// to scaledSin().
-	var yScaled Fix64
-	var isNeg bool
+// 	// We use the following identities to compute cos(x):
+// 	//     cos(x) = sin(π/2 - x)
+// 	//     cos(x) = -sin(3π/2 − x)
+// 	// If x is is less than or equal to π/2, we can use the first identity,
+// 	// if x is greater than π/2, we use the second identity.
+// 	// In both cases, we end up with a value in the range [0, π], to pass
+// 	// to scaledSin().
+// 	var yScaled UFix64
+// 	var sign int64
 
-	if xScaled.Lt(fix64HalfPiScaled) {
-		// cos(x) = sin(π/2 - x)
-		yScaled, _ = fix64HalfPiScaled.Sub(xScaled)
-		isNeg = false
-	} else {
-		// cos(x) = -sin(3π/2 − x)
-		yScaled, _ = fix64ThreeHalfPiScaled.Sub(xScaled)
-		isNeg = true
-	}
+// 	if xScaled.Lt(ufix64HalfPiScaled) {
+// 		// cos(x) = sin(π/2 - x)
+// 		yScaled, _ = ufix64HalfPiScaled.Sub(xScaled)
+// 		sign = 1
+// 	} else {
+// 		// cos(x) = -sin(3π/2 − x)
+// 		yScaled, _ = ufix64ThreeHalfPiScaled.Sub(xScaled)
+// 		sign = -1
+// 	}
 
-	resScaled, err := yScaled.innerSin64()
-	if err != nil {
-		return Fix64Zero, err
-	}
+// 	resScaled, err := yScaled.innerSin64()
+// 	if err != nil {
+// 		return Fix64Zero, err
+// 	}
 
-	res, _ := resScaled.Div(fix64TrigScale)
+// 	res, _ := resScaled.Div(fix64TrigScale)
 
-	if isNeg {
-		res = res.intMul(-1)
-	}
+// 	res = res.intMul(sign)
 
-	return res, nil
-}
+// 	return res, nil
+// }
+
+// Tan returns the tangent of x (in radians).
+// func (x Fix64) Tan() (Fix64, error) {
+// tan(x) = sin(x) / cos(x)
+// We can't use the Sin() and Cos() methods directly because they don't provide
+// enough precision once we divide the results.
+
+// Normalize the input angle to the range [0, π]
+// xScaled, sign := clampAngle64(x)
+
+// if xScaled.IsZero() {
+// 	return Fix64Zero, nil
+// }
+// // We compute y the same way we did in the cos() function above.
+// var yScaled UFix64
+
+// if xScaled.Lt(ufix64HalfPiScaled) {
+// 	// cos(x) = sin(π/2 - x)
+// 	yScaled, _ = ufix64HalfPiScaled.Sub(xScaled)
+// } else {
+// 	// cos(x) = -sin(3π/2 − x)
+// 	yScaled, _ = ufix64ThreeHalfPiScaled.Sub(xScaled)
+// 	sign *= -1
+// }
+
+// sinX, err := xScaled.innerSin64()
+// if err != nil {
+// 	return Fix64Zero, err
+// }
+
+// cosX, err := yScaled.innerSin64()
+// if err != nil {
+// 	return Fix64Zero, err
+// }
+
+// res, err := sinX.FMD(Fix64One, cosX)
+
+// if err != nil {
+// 	return Fix64Zero, err
+// }
+
+// // if res > Fix64(5e15) {
+// // 	if sign < 0 {
+// // 		// If the result is too large and negative, we return a negative overflow error
+// // 		return 0, ErrNegOverflow
+// // 	} else {
+// // 		// If the result is too large and positive, we return a positive overflow error
+// // 		return 0, ErrOverflow
+// // 	}
+// // }
+
+// res = res.intMul(sign)
+
+// return res, nil
+// }

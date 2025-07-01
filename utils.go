@@ -1,0 +1,69 @@
+package fixedPoint
+
+const scaleFactor64To128 = raw64(Fix128Scale / Fix64Scale)
+
+// Converts a UFix64 to a UFix128, can't fail since UFix128 has a larger range than UFix64.
+func (x UFix64) ToUFix128() UFix128 {
+	hi, lo := mul64(raw64(x), scaleFactor64To128)
+
+	return UFix128{Hi: hi, Lo: lo}
+}
+
+// Converts a Fix64 to a Fix128, can't fail since Fix128 has a larger range than Fix64.
+func (x Fix64) ToFix128() Fix128 {
+	unsignedX, sign := x.Abs()
+
+	unsignedRes := unsignedX.ToUFix128()
+
+	return Fix128(unsignedRes).intMul(sign)
+}
+
+// Converts a UFix128 to a UFix64, returns an error if the value can't be represented in UFix64,
+// including overflow and underflow cases.
+func (x UFix128) ToUFix64() (UFix64, error) {
+	// Return zero immediately when possible.
+	if x.IsZero() {
+		return UFix64Zero, nil
+	}
+
+	// Fix128 has a larger range than UFix64, so we check to see that this
+	// value will fit in UFix64 after division
+	if !ult64(x.Hi, scaleFactor64To128) {
+		return UFix64Zero, ErrOverflow
+	}
+
+	quo, rem := div64(x.Hi, x.Lo, scaleFactor64To128)
+
+	if ushouldRound64(rem, scaleFactor64To128) {
+		var carry uint64
+		quo, carry = add64(quo, raw64Zero, 1)
+
+		// If there's a carry, the rounding overflowed.
+		if carry != 0 {
+			return UFix64Zero, ErrOverflow
+		}
+	} else {
+		// If the quotient is zero, the result is an overflow. (We had a fast return
+		// at the top of the file to check for the case where the input was zero to
+		// begin with.)
+		if isZero64(quo) {
+			return UFix64Zero, ErrUnderflow
+		}
+	}
+
+	return UFix64(quo), nil
+}
+
+// Converts a Fix128 to a Fix64, returns an error if the value can't be represented in Fix64,
+// including overflow, negative overflow, and underflow cases.
+func (x Fix128) ToFix64() (Fix64, error) {
+	unsignedX, sign := x.Abs()
+
+	res, err := unsignedX.ToUFix64()
+
+	if err != nil {
+		return Fix64Zero, err
+	}
+
+	return res.ApplySign(sign)
+}

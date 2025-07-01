@@ -29,7 +29,7 @@ while True:
         break
 
 # We now have a list of coefficients for the Chebyshev polynomial for sin(x) in Fix64,
-# in the range [0, pi/2], with error less than fix64Epsilon.
+# in the range [0, pi/4], with error less than fix64Epsilon.
 sinCoeff64 = reversed(sinCoeff64)  # Reverse the order so that the index matches the degree
 
 print("// Chebyshev coefficients for sin(x) at fix64_twoPiScale")

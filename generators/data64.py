@@ -146,6 +146,17 @@ ExtraData64 = [
     ("ln(10)", "2.30258509"),
     ("e", "2.71828183"),
     ("e^2", "7.38905610"),
+
+    # Maximal powers of numbers near 1.0 that still
+    # fit in UFix64
+    ("", "2594073894.15878282"),
+    ("", "1297036953.56457608"),
+    ("", "864691306.69984049"),
+    ("", "648518483.26747268"),
+    ("", "1842068065.18489616"),
+    ("", "1893150627.30608242"),
+    ("", "921034027.98727787"),
+    ("", "946575308.92016459"),
 ]
 
 # Additional inputs used for single-argument methods
@@ -325,9 +336,6 @@ BonusData64 = [
 	("184467440737.09551605", "184467440737.09551605"),
 ]
 
-def pr(input):
-    print("\n".join([str(y) for y in input]))
-
 # Generates a sequence of UFix64 test values based on the provided raw values.
 # Each test value is a tuple of (string representation, Decimal value).
 @Pipe
@@ -461,7 +469,7 @@ def generateFix64Values(raw_values):
             raise ValueError(f"Invalid raw value format: {rawV}")
 
 @Pipe
-def expandByIota(values):
+def expandByIota64(values):
     for val in values:
         yield val
 
@@ -486,7 +494,7 @@ def isUFix64Value(val):
     """Check if the value is a valid UFix64 value."""
     if isinstance(val, Decimal):
         testVal = val.quantize(Decimal("1e-8"), rounding='ROUND_HALF_UP')
-        return 0 <= testVal < Decimal("184467440737.09551615") and \
+        return 0 <= testVal <= Decimal("184467440737.09551615") and \
                 (testVal == 0 or testVal >= Decimal("1e-8"))
     return False
 

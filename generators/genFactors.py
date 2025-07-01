@@ -43,8 +43,13 @@ def checkChunk(startValue, incr, count, modulus):
     smallestIndex = 0
     curValue = startValue
     for i in range(count):
-        if curValue < smallest:
-            smallest = curValue
+        if curValue > modulus / 2:
+            curErr = modulus - curValue
+        else:
+            curErr = curValue
+
+        if curErr < smallest:
+            smallest = curErr
             smallestIndex = i
         curValue = (curValue + incr) % modulus
     return smallestIndex
@@ -134,19 +139,21 @@ def main():
     print(f"Deadline set to {deadline} seconds.")
 
     print("Calculating best factor of 2π for UFix64")
-    maxFactor = (Fix64Max / 7).quantize(1, rounding=ROUND_DOWN)
+    maxFactor = (UFix64Max / Decimal(3.2)).quantize(1, rounding=ROUND_DOWN)
     genFactorJit(maxFactor, Decimal(str(mpmath.pi)) * 2, Decimal('1e-8'))
 
     # print("Calculating best factor of ln(2) for UFix64")
     # maxFactor = (Fix64Max / Decimal('25.95')).quantize(1, rounding=ROUND_DOWN)
     # genFactorJit(maxFactor, Decimal(2).ln(), Decimal('1e-8'))
 
-    print("Calculating best factor of 2π for UFix64")
-    maxFactor = (Fix128Max / 7).quantize(1, rounding=ROUND_DOWN)
-    genFactorJit(maxFactor, Decimal(str(mpmath.pi)) * 2, Decimal('1e-24'))
+    # print("Calculating best factor of 2π for UFix128")
+    # maxFactor = (Fix128Max / Decimal(4)).quantize(1, rounding=ROUND_DOWN)
+    # maxFactor = 35772825965117
+    # genFactorJit(maxFactor, Decimal(str(mpmath.pi)) * 2, Decimal('1e-24'))
 
-    # print("Calculating best factor of ln(2) for UFix64")
-    # maxFactor = (Fix64Max / Decimal('25.95')).quantize(1, rounding=ROUND_DOWN)
+    # print("Calculating best factor of ln(2) for UFix128")
+    # maxFactor = (Fix128Max / Decimal('55.3')).quantize(1, rounding=ROUND_DOWN)
+    # maxFactor = 533137795126  # Best factor found in previous runs
     # genFactorJit(maxFactor, Decimal(2).ln(), Decimal('1e-8'))
 
 if __name__ == "__main__":

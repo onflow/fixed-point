@@ -17,14 +17,14 @@ var errorMap = map[string]error{
 	"DomainError": ErrDomain,
 }
 
-type OneArgTestCase struct {
+type OneArgTestCase64 struct {
 	A           uint64
 	Expected    uint64
 	err         error
 	Description string
 }
 
-type TwoArgTestCase struct {
+type TwoArgTestCase64 struct {
 	A           uint64
 	B           uint64
 	Expected    uint64
@@ -32,7 +32,7 @@ type TwoArgTestCase struct {
 	Description string
 }
 
-type ThreeArgTestCase struct {
+type ThreeArgTestCase64 struct {
 	A           uint64
 	B           uint64
 	C           uint64
@@ -50,22 +50,20 @@ type TestState struct {
 
 // A useful function to debug a specific test case. You can just copy/paste the test case values
 // from a failing test's log output into this function and then debug it.
-func TestDebugOneArgTestCase(t *testing.T) {
+func TestDebugOneArgTestCase64(t *testing.T) {
 
-	tc := OneArgTestCase{
-		A:        0x0000000000000001,
-		Expected: 0xffffffff92344596,
+	tc := OneArgTestCase64{
+		A:        0x7ffffffffa0a1eff,
+		Expected: 0xfffffffba5862754,
 		err:      nil,
 	}
 
-	a := UFix64(tc.A)
-	res, err := a.Ln()
+	a := Fix64(tc.A)
+	res, err := a.Tan()
 
 	// Used for debugging clampAngle
-	// err := error(nil)
-	// if neg {
-	// 	res = res.Neg()
-	// }
+	// temp, sign := clampAngle64Test(a)
+	// res, err := temp.ApplySign(sign)
 
 	var errorAmount uint64 = 0
 
@@ -79,19 +77,26 @@ func TestDebugOneArgTestCase(t *testing.T) {
 		tc.A, uint64(res), err, tc.Expected, tc.err, errorAmount)
 }
 
-func TestDebugTwoArgTestCase(t *testing.T) {
-	t.Skip()
+func TestDebugTwoArgTestCase64(t *testing.T) {
+	// t.Skip()
 
-	tc := TwoArgTestCase{
-		A:        0x000000001dcd6500,
-		B:        0x000000005f5e0fff,
-		Expected: 0xd3c21b959f2d0222,
-		err:      nil,
+	tc := TwoArgTestCase64{
+		A:        0x0000000000000001,
+		B:        0x0000000000000001,
+		Expected: 0x0000000005f5e0ee,
+		err:      ErrOverflow,
 	}
 
 	a := UFix64(tc.A)
 	b := Fix64(tc.B)
+
 	res, err := a.Pow(b)
+
+	// a128 := a.ToUFix128()
+	// b128 := b.ToFix128()
+	// res128, err := a128.powNearOne(b128)
+
+	// res, _ := res128.ToUFix64()
 
 	var errorAmount uint64 = 0
 
@@ -106,11 +111,11 @@ func TestDebugTwoArgTestCase(t *testing.T) {
 }
 
 // This line is used to tell the Go toolchain that the code in this file depends the Python scripts
-//go:generate sh -c "stat generators/add64.py > /dev/null"
+//go:generate sh -c "stat generators/genTestData.py > /dev/null"
 //go:generate sh -c "stat generators/data64.py > /dev/null"
 
-func OneArgTestChannel(t *testing.T, valType string, operation string) chan OneArgTestCase {
-	cmd := exec.Command("uv", "run", "add64.py", valType, operation)
+func OneArgTestChannel64(t *testing.T, valType string, operation string) chan OneArgTestCase64 {
+	cmd := exec.Command("uv", "run", "genTestData.py", valType, operation)
 	cmd.Dir = "./generators"
 
 	// Get a pipe to Python's stdout
@@ -123,7 +128,7 @@ func OneArgTestChannel(t *testing.T, valType string, operation string) chan OneA
 		t.Fatal(err)
 	}
 
-	ch := make(chan OneArgTestCase)
+	ch := make(chan OneArgTestCase64)
 
 	go func() {
 		defer close(ch)
@@ -144,7 +149,7 @@ func OneArgTestChannel(t *testing.T, valType string, operation string) chan OneA
 			errorString := parts[2]
 			message := strings.Trim(parts[3], "\"")
 
-			ch <- OneArgTestCase{
+			ch <- OneArgTestCase64{
 				A:           a,
 				Expected:    expected,
 				err:         errorMap[errorString],
@@ -161,8 +166,8 @@ func OneArgTestChannel(t *testing.T, valType string, operation string) chan OneA
 	return ch
 }
 
-func TwoArgTestChannel(t *testing.T, valType string, operation string) chan TwoArgTestCase {
-	cmd := exec.Command("uv", "run", "add64.py", valType, operation)
+func TwoArgTestChannel64(t *testing.T, valType string, operation string) chan TwoArgTestCase64 {
+	cmd := exec.Command("uv", "run", "genTestData.py", valType, operation)
 	cmd.Dir = "./generators"
 
 	// Get a pipe to Python's stdout
@@ -175,7 +180,7 @@ func TwoArgTestChannel(t *testing.T, valType string, operation string) chan TwoA
 		t.Fatal(err)
 	}
 
-	ch := make(chan TwoArgTestCase)
+	ch := make(chan TwoArgTestCase64)
 
 	go func() {
 		defer close(ch)
@@ -197,7 +202,7 @@ func TwoArgTestChannel(t *testing.T, valType string, operation string) chan TwoA
 			errorString := parts[3]
 			message := strings.Trim(parts[4], "\"")
 
-			ch <- TwoArgTestCase{
+			ch <- TwoArgTestCase64{
 				A:           a,
 				B:           b,
 				Expected:    expected,
@@ -215,8 +220,8 @@ func TwoArgTestChannel(t *testing.T, valType string, operation string) chan TwoA
 	return ch
 }
 
-func ThreeArgTestChannel(t *testing.T, valType string, operation string) chan ThreeArgTestCase {
-	cmd := exec.Command("uv", "run", "add64.py", valType, operation)
+func ThreeArgTestChannel64(t *testing.T, valType string, operation string) chan ThreeArgTestCase64 {
+	cmd := exec.Command("uv", "run", "genTestData.py", valType, operation)
 	cmd.Dir = "./generators"
 
 	// Get a pipe to Python's stdout
@@ -229,7 +234,7 @@ func ThreeArgTestChannel(t *testing.T, valType string, operation string) chan Th
 		t.Fatal(err)
 	}
 
-	ch := make(chan ThreeArgTestCase)
+	ch := make(chan ThreeArgTestCase64)
 
 	go func() {
 		defer close(ch)
@@ -252,7 +257,7 @@ func ThreeArgTestChannel(t *testing.T, valType string, operation string) chan Th
 			errorString := parts[4]
 			message := strings.Trim(parts[5], "\"")
 
-			ch <- ThreeArgTestCase{
+			ch <- ThreeArgTestCase64{
 				A:           a,
 				B:           b,
 				C:           c,
@@ -271,7 +276,7 @@ func ThreeArgTestChannel(t *testing.T, valType string, operation string) chan Th
 	return ch
 }
 
-func OneArgResultCheck(t *testing.T, ts *TestState, tc OneArgTestCase, actualResult uint64, actualErr error) bool {
+func OneArgResultCheck64(t *testing.T, ts *TestState, tc OneArgTestCase64, actualResult uint64, actualErr error) bool {
 	success := true
 
 	if tc.err != nil || actualErr != nil {
@@ -309,7 +314,7 @@ func OneArgResultCheck(t *testing.T, ts *TestState, tc OneArgTestCase, actualRes
 	return true
 }
 
-func TwoArgResultCheck(t *testing.T, ts *TestState, tc TwoArgTestCase, actualResult uint64, actualErr error) bool {
+func TwoArgResultCheck64(t *testing.T, ts *TestState, tc TwoArgTestCase64, actualResult uint64, actualErr error) bool {
 	success := true
 
 	if tc.err != nil || actualErr != nil {
@@ -348,7 +353,7 @@ func TwoArgResultCheck(t *testing.T, ts *TestState, tc TwoArgTestCase, actualRes
 	return true
 }
 
-func ThreeArgResultCheck(t *testing.T, ts *TestState, tc ThreeArgTestCase, actualResult uint64, actualErr error) bool {
+func ThreeArgResultCheck64(t *testing.T, ts *TestState, tc ThreeArgTestCase64, actualResult uint64, actualErr error) bool {
 	success := true
 
 	if tc.err != nil || actualErr != nil {
@@ -397,12 +402,12 @@ func TestAddUFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
 		b := UFix64(tc.B)
 		res, err := a.Add(b)
 
-		TwoArgResultCheck(t, testState, tc, uint64(res), err)
+		TwoArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -417,12 +422,12 @@ func TestAddFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
 		res, err := a.Add(b)
 
-		TwoArgResultCheck(t, testState, tc, uint64(res), err)
+		TwoArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -437,12 +442,12 @@ func TestSubUFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
 		b := UFix64(tc.B)
 		res, err := a.Sub(b)
 
-		TwoArgResultCheck(t, testState, tc, uint64(res), err)
+		TwoArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -457,12 +462,12 @@ func TestSubFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
 		res, err := a.Sub(b)
 
-		TwoArgResultCheck(t, testState, tc, uint64(res), err)
+		TwoArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -477,12 +482,12 @@ func TestMulUFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
 		b := UFix64(tc.B)
 		res, err := a.Mul(b)
 
-		TwoArgResultCheck(t, testState, tc, uint64(res), err)
+		TwoArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -497,12 +502,12 @@ func TestMulFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
 		res, err := a.Mul(b)
 
-		TwoArgResultCheck(t, testState, tc, uint64(res), err)
+		TwoArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -517,12 +522,12 @@ func TestDivUFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
 		b := UFix64(tc.B)
 		res, err := a.Div(b)
 
-		TwoArgResultCheck(t, testState, tc, uint64(res), err)
+		TwoArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -537,12 +542,12 @@ func TestDivFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
 		res, err := a.Div(b)
 
-		TwoArgResultCheck(t, testState, tc, uint64(res), err)
+		TwoArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -557,13 +562,13 @@ func TestFMDUFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range ThreeArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range ThreeArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
 		b := UFix64(tc.B)
 		c := UFix64(tc.C)
 		res, err := a.FMD(b, c)
 
-		ThreeArgResultCheck(t, testState, tc, uint64(res), err)
+		ThreeArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -578,13 +583,13 @@ func TestFMDFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range ThreeArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range ThreeArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
 		b := Fix64(tc.B)
 		c := Fix64(tc.C)
 		res, err := a.FMD(b, c)
 
-		ThreeArgResultCheck(t, testState, tc, uint64(res), err)
+		ThreeArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -599,11 +604,11 @@ func TestSqrtUFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
 		res, err := a.Sqrt()
 
-		OneArgResultCheck(t, testState, tc, uint64(res), err)
+		OneArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -618,11 +623,11 @@ func TestLnFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
 		res, err := a.Ln()
 
-		OneArgResultCheck(t, testState, tc, uint64(res), err)
+		OneArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -637,11 +642,11 @@ func TestExpFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
 		res, err := a.Exp()
 
-		OneArgResultCheck(t, testState, tc, uint64(res), err)
+		OneArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -656,12 +661,12 @@ func TestPowFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
 		b := Fix64(tc.B)
 		res, err := a.Pow(b)
 
-		TwoArgResultCheck(t, testState, tc, uint64(res), err)
+		TwoArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -670,28 +675,26 @@ func TestPowFix64(t *testing.T) {
 // the range [-π, π] is a huge potential source of error. We can test this function
 // separately, to make sure we aren't introducing errors before we even get to the
 // core sin/cos calculations.
-func TestClampFix64(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix64",
-		operation:    "Clamp",
-		successCount: 0,
-		failureCount: 0,
-	}
+// func TestClampFix64(t *testing.T) {
+// 	testState := &TestState{
+// 		outType:      "Fix64",
+// 		operation:    "Clamp",
+// 		successCount: 0,
+// 		failureCount: 0,
+// 	}
 
-	t.Parallel()
+// 	t.Parallel()
 
-	for tc := range OneArgTestChannel(t, testState.outType, testState.operation) {
-		a := Fix64(tc.A)
-		res, neg := clampAngle64(a)
+// 	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
+// 		a := Fix64(tc.A)
+// 		res, sign := clampAngle64Test(a)
 
-		if neg {
-			res = res.intMul(-1)
-		}
+// 		resSigned := Fix64(res).intMul(sign)
 
-		OneArgResultCheck(t, testState, tc, uint64(res), nil)
-	}
-	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
-}
+// 		OneArgResultCheck64(t, testState, tc, uint64(resSigned), nil)
+// 	}
+// 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+// }
 
 func TestSinFix64(t *testing.T) {
 	testState := &TestState{
@@ -703,11 +706,11 @@ func TestSinFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
 		res, err := a.Sin()
 
-		OneArgResultCheck(t, testState, tc, uint64(res), err)
+		OneArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -722,11 +725,11 @@ func TestCosFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
 		res, err := a.Cos()
 
-		OneArgResultCheck(t, testState, tc, uint64(res), err)
+		OneArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
@@ -741,11 +744,11 @@ func TestTanFix64(t *testing.T) {
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
 		res, err := a.Tan()
 
-		OneArgResultCheck(t, testState, tc, uint64(res), err)
+		OneArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }

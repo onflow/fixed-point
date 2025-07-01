@@ -15,26 +15,26 @@ const Fix64Max = Fix64(0x7fffffffffffffff) // Max value for Fix64
 const Fix64Min = Fix64(0x8000000000000000) // Min value for Fix64
 
 const Fix128Scale = 1E+24 // NOTE: Bigger than uint64! Mostly here as documentation...
-var UFix128Zero = UFix128(raw128{0x0000000000000000, 0x0000000000000000})
-var Fix128Zero = Fix128(raw128{0x0000000000000000, 0x0000000000000000})
-var UFix128One = UFix128(raw128{0x000000000000d3c2, 0x1bcecceda1000000})
-var Fix128One = Fix128(raw128{0x000000000000d3c2, 0x1bcecceda1000000})
+var UFix128Zero = UFix128{0x0000000000000000, 0x0000000000000000}
+var Fix128Zero = Fix128{0x0000000000000000, 0x0000000000000000}
+var UFix128One = UFix128{0x000000000000d3c2, 0x1bcecceda1000000}
+var Fix128One = Fix128{0x000000000000d3c2, 0x1bcecceda1000000}
 var UFix128Iota = UFix128{0, 1}
 var Fix128Iota = Fix128{0, 1}
 const Fix128OneLeadingZeros = 48 // Number of leading zero bits for Fix128One
-var UFix128Max = UFix128(raw128{0xffffffffffffffff, 0xffffffffffffffff})
-var Fix128Max = Fix128(raw128{0x7fffffffffffffff, 0xffffffffffffffff})
-var Fix128Min = Fix128(raw128{0x8000000000000000, 0x0000000000000000})
+var UFix128Max = UFix128{0xffffffffffffffff, 0xffffffffffffffff}
+var Fix128Max = Fix128{0x7fffffffffffffff, 0xffffffffffffffff}
+var Fix128Min = Fix128{0x8000000000000000, 0x0000000000000000}
 
 // Fix64 transcendental constants (see constgen.py for more information)
 const Fix64Pi = Fix64(0x0000000012b9b0a1)
-const fix64TrigMultiplier = uint64(0x0000000279bd389f)
-const fix64TrigScale = Fix64(0x0ec1613199eebf00)
-const fix64PiScaled = Fix64(0x2e5afcfaa354bad6)
-const fix64TwoPiScaled = Fix64(0x5cb5f9f546a975ab)
-const fix64HalfPiScaled = Fix64(0x172d7e7d51aa5d6b)
-const fix64ThreeHalfPiScaled = Fix64(0x45887b77f4ff1840)
-const fix64SinIotaScaled = Fix64(0x0000015dcfc36d8a)
+const fix64TrigMultiplier = uint64(0x00000004f37a713e)
+const fix64TrigScale = Fix64(0x1d82c26333dd7e00)
+const ufix64PiScaled = UFix64(0x5cb5f9f546a975ab)
+const ufix64TwoPiScaled = UFix64(0xb96bf3ea8d52eb56)
+const ufix64HalfPiScaled = UFix64(0x2e5afcfaa354bad6)
+const ufix64ThreeHalfPiScaled = UFix64(0x8b10f6efe9fe3081)
+const fix64SinIotaScaled = Fix64(0x0000022b4a903bb8)
 
 const fix64LnMultiplier = uint64(0x00000000b8815d3d)
 const fix64LnScale = Fix64(0x044bbcca1f539d00)
@@ -46,21 +46,182 @@ const maxLn64 = Fix64(0x000000009a9e6d19)
 const minLn64 = Fix64(0xffffffff8e129cf8)
 
 // Fix128 transcendental constants (see constgen.py for more information)
-var Fix128Pi = Fix128(raw128{0x0000000000029942, 0x1439a0abd72cb0b3})
-const fix128TrigMultiplier = uint64(0x0000161147804d12)
-var fix128TrigScale = Fix128(raw128{0x1240f96c94dc8fdd, 0x37a5622252000000})
-var fix128PiScaled = Fix128(raw128{0x395894ef08902f01, 0xe1211d7fd18c6716})
-var fix128TwoPiScaled = Fix128(raw128{0x72b129de11205e03, 0xc2423affa318ce2b})
-var fix128HalfPiScaled = Fix128(raw128{0x1cac4a7784481780, 0xf0908ebfe8c6338b})
-var fix128ThreeHalfPiScaled = Fix128(raw128{0x5604df668cd84682, 0xd1b1ac3fba529aa0})
-var fix128SinIotaScaled = Fix128(raw128{0x000000000009ffa9, 0x8b68d2ea54f490d7})
+var Fix128Pi = Fix128{0x0000000000029942, 0x1439a0abd72cb0b3}
+const fix128TrigMultiplier = uint64(0x0000219930761854)
+var fix128TrigScale = Fix128{0x1bcabcae5bd261d1, 0xbfc9bb10d4000000}
+var ufix128PiScaled = UFix128{0x574f9b08cb9fc9b4, 0xae031f257695ad48}
+var ufix128TwoPiScaled = UFix128{0xae9f3611973f9369, 0x5c063e4aed2b5a90}
+var ufix128HalfPiScaled = UFix128{0x2ba7cd8465cfe4da, 0x57018f92bb4ad6a4}
+var ufix128ThreeHalfPiScaled = UFix128{0x82f7688d316fae8f, 0x0504aeb831e083ec}
+var fix128SinIotaScaled = Fix128{0x00000000000d3b9b, 0x4cb0f0949fd64761}
 
-const fix128LnMultiplier = uint64(0x00000000b8815d3d)
-var fix128LnScale = Fix128(raw128{0x0000989e85ec9fda, 0xd02f491c5d000000})
-var ufix128LnScale = UFix128(raw128{0x0000989e85ec9fda, 0xd02f491c5d000000})
-var fix128Ln2Scaled = Fix128(raw128{0x000069c99f7a39f6, 0x0f1a1bd1b16aa7a8})
+const fix128LnMultiplier = uint64(0x0000025ed0e9f24e)
+var fix128LnScale = Fix128{0x01f5f24d0e3a73aa, 0xabd29b990e000000}
+var ufix128LnScale = UFix128{0x01f5f24d0e3a73aa, 0xabd29b990e000000}
+var fix128Ln2Scaled = Fix128{0x015bec3c2bd3d63e, 0xe2de69124cfeeb0c}
+
+var fix192Pi = fix192{i: 0x0000000000000003, f: raw128{0x243f6a8885a308d3, 0x13198a2e03707345}}
+var fix192HalfPi = fix192{i: 0x0000000000000001, f: raw128{0x921fb54442d18469, 0x898cc51701b839a2}}
+var fix192ThreeHalfPi = fix192{i: 0x0000000000000004, f: raw128{0xb65f1fccc8748d3c, 0x9ca64f450528ace7}}
 
 // Valid logarithm bounds for Fix128
-var maxLn128 = Fix128(raw128{0x00000000001bad99, 0x6ed79d2e3e070000})
-var minLn128 = Fix128(raw128{0xffffffffffd1b707, 0x1a9f38566f630000})
+var maxLn128 = Fix128{0x00000000001bad99, 0x6efa7cb14cc1795c}
+var minLn128 = Fix128{0xffffffffffd1b707, 0x1a96a20d0de9023d}
+
+// The value of e^x for all integer values of x between minLn128 and maxLn128
+// expressed as fix192 values.
+var expIntPowers = []fix192{
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x000093f622c632f2}}, // e^-56
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x0001923372c67a07}}, // e^-55
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x0004454babadcf02}}, // e^-54
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x000b9be2b2288a5b}}, // e^-53
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x001f8e6c24b5592e}}, // e^-52
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x0055c76dccea7586}}, // e^-51
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x00e92beaa3f041f7}}, // e^-50
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x0279d373bcf1f0a1}}, // e^-49
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x06baeaeb8e906d30}}, // e^-48
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x124b6031b49bda70}}, // e^-47
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x31babc37613afcd9}}, // e^-46
+    fix192{i: 0, f: raw128{0x0000000000000000, 0x872db9e8ffa9e7d4}}, // e^-45
+    fix192{i: 0, f: raw128{0x0000000000000001, 0x6f741de1748ebebf}}, // e^-44
+    fix192{i: 0, f: raw128{0x0000000000000003, 0xe6d7a6fe85e7c2fb}}, // e^-43
+    fix192{i: 0, f: raw128{0x000000000000000a, 0x9b2297717badf402}}, // e^-42
+    fix192{i: 0, f: raw128{0x000000000000001c, 0xd480a1b7481fdd72}}, // e^-41
+    fix192{i: 0, f: raw128{0x000000000000004e, 0x5e49266c6890a553}}, // e^-40
+    fix192{i: 0, f: raw128{0x00000000000000d5, 0x06f25f9ad9bf4f1f}}, // e^-39
+    fix192{i: 0, f: raw128{0x0000000000000243, 0x115ad5c66061bb02}}, // e^-38
+    fix192{i: 0, f: raw128{0x0000000000000626, 0x11c7f298153f9dab}}, // e^-37
+    fix192{i: 0, f: raw128{0x00000000000010b6, 0xc3afdde063806d10}}, // e^-36
+    fix192{i: 0, f: raw128{0x0000000000002d6e, 0xe334b3e1c054f70b}}, // e^-35
+    fix192{i: 0, f: raw128{0x0000000000007b80, 0x07bb58aa7f51e390}}, // e^-34
+    fix192{i: 0, f: raw128{0x0000000000014fb5, 0x47c775da786fc232}}, // e^-33
+    fix192{i: 0, f: raw128{0x000000000003908c, 0x9eec2c8d03c53340}}, // e^-32
+    fix192{i: 0, f: raw128{0x000000000009b090, 0xf1269ddcc4bc6205}}, // e^-31
+    fix192{i: 0, f: raw128{0x00000000001a56e0, 0xc2ac7f74d50fd4e4}}, // e^-30
+    fix192{i: 0, f: raw128{0x000000000047990a, 0xebae128142bbc1e7}}, // e^-29
+    fix192{i: 0, f: raw128{0x0000000000c29f80, 0xeb6a9dcfeb64183d}}, // e^-28
+    fix192{i: 0, f: raw128{0x0000000002110a53, 0x0ecfd3446f1dfbcc}}, // e^-27
+    fix192{i: 0, f: raw128{0x00000000059e14a9, 0xc01f9061e363dd5a}}, // e^-26
+    fix192{i: 0, f: raw128{0x000000000f451bd2, 0x2fe196e818e4ee1e}}, // e^-25
+    fix192{i: 0, f: raw128{0x0000000029820f1f, 0xd245141436addb03}}, // e^-24
+    fix192{i: 0, f: raw128{0x0000000070d49f90, 0xcfeac45fad30edeb}}, // e^-23
+    fix192{i: 0, f: raw128{0x0000000132b48bf1, 0x17da253cef05f686}}, // e^-22
+    fix192{i: 0, f: raw128{0x0000000341b61a1b, 0xb67d841156e47a5e}}, // e^-21
+    fix192{i: 0, f: raw128{0x00000008da432af9, 0xb93373025a28a80c}}, // e^-20
+    fix192{i: 0, f: raw128{0x000000181056ff2c, 0x5771a77f0f91dbfb}}, // e^-19
+    fix192{i: 0, f: raw128{0x00000041698a31a6, 0x7e832211c55e95b0}}, // e^-18
+    fix192{i: 0, f: raw128{0x000000b1cf18bad3, 0x44e5ecce1dd4e868}}, // e^-17
+    fix192{i: 0, f: raw128{0x000001e355bbaee8, 0x5cada65f73f32e89}}, // e^-16
+    fix192{i: 0, f: raw128{0x00000521d72889fb, 0x0e02fe38b63eebcd}}, // e^-15
+    fix192{i: 0, f: raw128{0x00000df3637ed80b, 0x09086e670bd598c4}}, // e^-14
+    fix192{i: 0, f: raw128{0x000025ec0a77303b, 0x306842a4a5658da9}}, // e^-13
+    fix192{i: 0, f: raw128{0x0000671530ed0ef2, 0x2bc643b06cff1c8f}}, // e^-12
+    fix192{i: 0, f: raw128{0x000118354238f676, 0x403c9efcef2efaae}}, // e^-11
+    fix192{i: 0, f: raw128{0x0002f9af36ac8f93, 0x538b648eaa1310e6}}, // e^-10
+    fix192{i: 0, f: raw128{0x0008167912932a2c, 0xc8ab6d9e082ec1b6}}, // e^-9
+    fix192{i: 0, f: raw128{0x0015fc21041027ac, 0xbbfcd46780fee71f}}, // e^-8
+    fix192{i: 0, f: raw128{0x003bc2d73849531d, 0x57332efd57ef4a2c}}, // e^-7
+    fix192{i: 0, f: raw128{0x00a2728f889ea6ae, 0xc05d023e000435e6}}, // e^-6
+    fix192{i: 0, f: raw128{0x01b993fe00d53761, 0xc45c249149a5b95e}}, // e^-5
+    fix192{i: 0, f: raw128{0x04b0556e084f3d1d, 0xfa2bc04cb0ab88f5}}, // e^-4
+    fix192{i: 0, f: raw128{0x0cbed86667585764, 0xa4130191c8408680}}, // e^-3
+    fix192{i: 0, f: raw128{0x22a555477f03973f, 0xb6edd5c25a052ae4}}, // e^-2
+    fix192{i: 0, f: raw128{0x5e2d58d8b3bcdf1a, 0xbadec7829054f90e}}, // e^-1
+    fix192{i: 1, f: raw128{0x0000000000000000, 0x0000000000000000}}, // e^0
+    fix192{i: 2, f: raw128{0xb7e151628aed2a6a, 0xbf7158809cf4f3c7}}, // e^1
+    fix192{i: 7, f: raw128{0x63992e35376b730c, 0xe8ee881ada2aeea1}}, // e^2
+    fix192{i: 20, f: raw128{0x15e5bf6fb105f2d4, 0xbdfc53744c3a3906}}, // e^3
+    fix192{i: 54, f: raw128{0x99205c4e74b0cf1a, 0xda77fb727b72da06}}, // e^4
+    fix192{i: 148, f: raw128{0x69c4cb819c78fb37, 0xd56c91ad5f3a152e}}, // e^5
+    fix192{i: 403, f: raw128{0x6dc5690c08f37a9a, 0xe51f9733225ffe39}}, // e^6
+    fix192{i: 1096, f: raw128{0xa216abb76a9bc7e8, 0x02a24deb83c19119}}, // e^7
+    fix192{i: 2980, f: raw128{0xf53ea38636f85f00, 0x7042540ae8ef3322}}, // e^8
+    fix192{i: 8103, f: raw128{0x157c470f81c3655e, 0x1bc14a7646d8dfa1}}, // e^9
+    fix192{i: 22026, f: raw128{0x773e54157e7c1faa, 0x3015b44d322ea986}}, // e^10
+    fix192{i: 59874, f: raw128{0x2447727bf9f7b893, 0x7dac77c90401ef2a}}, // e^11
+    fix192{i: 162754, f: raw128{0xca9a6f9345d400b8, 0x8cae42138a4a208f}}, // e^12
+    fix192{i: 442413, f: raw128{0x645ab2554d531d36, 0x32aeb40b8105b483}}, // e^13
+    fix192{i: 1202604, f: raw128{0x48bf05d6ef81ba34, 0x411e30ac0a062ae3}}, // e^14
+    fix192{i: 3269017, f: raw128{0x5f5a550dde2e5fe3, 0x72cd4b123b283ce0}}, // e^15
+    fix192{i: 8886110, f: raw128{0x854001024911f8b8, 0x4415af72f7edd33c}}, // e^16
+    fix192{i: 24154952, f: raw128{0xc0ea4f8ce7e990ca, 0x90d53c27cff0c5c2}}, // e^17
+    fix192{i: 65659969, f: raw128{0x232817a615846a57, 0x82d6faa964bfb3de}}, // e^18
+    fix192{i: 178482300, f: raw128{0xf69370b940b198f7, 0x7416974e92dd6dff}}, // e^19
+    fix192{i: 485165195, f: raw128{0x68e80402189797f9, 0x599cb8b6b997ad7b}}, // e^20
+    fix192{i: 1318815734, f: raw128{0x7bb3f55976a7206a, 0x58784c1ebb30cfbf}}, // e^21
+    fix192{i: 3584912846, f: raw128{0x21affc0dd9a3592a, 0x7c3a2dfe8df9bc88}}, // e^22
+    fix192{i: 9744803446, f: raw128{0x3fb814af09c1f5d3, 0x924bf56013478f2e}}, // e^23
+    fix192{i: 26489122129, f: raw128{0xd7edccde68e84118, 0xed1a2d7d06887453}}, // e^24
+    fix192{i: 72004899337, f: raw128{0x62c88aafb2ae72d6, 0x85709ffd1c722109}}, // e^25
+    fix192{i: 195729609428, f: raw128{0xd6b94153be31fa7b, 0x36e6985f1f29dc6c}}, // e^26
+    fix192{i: 532048240601, f: raw128{0xcc72249abc11d147, 0xdc0ee8d1847c4df1}}, // e^27
+    fix192{i: 1446257064291, f: raw128{0x79a4fb6ad6b829de, 0xf3716ac3fe805733}}, // e^28
+    fix192{i: 3931334297144, f: raw128{0x0ac5631b1fe5152f, 0x9980ed8ebe753607}}, // e^29
+    fix192{i: 10686474581524, f: raw128{0x764f43e201f73a54, 0x2cacc14a2103be86}}, // e^30
+    fix192{i: 29048849665247, f: raw128{0x6cdbf1c63f4b59e3, 0xf7a57c7a353bdabe}}, // e^31
+    fix192{i: 78962960182680, f: raw128{0xb1f611e210061085, 0xd01d1d67e741af43}}, // e^32
+    fix192{i: 214643579785916, f: raw128{0x108b37cd69a982a4, 0xf56f29d462c4655a}}, // e^33
+}
+const smallestExpIntPower =  -56
+
+// Used for Chebyshev coefficients
+type coeff struct { isNeg bool; value raw128 }
+
+// Chebyshev coefficients for sin(x) in the range [0, 1]
+var sinChebyCoeffs = []coeff{
+    coeff{false, raw128{0x0000000000000000, 0x0000000000000000}}, // x^0
+    coeff{false, raw128{0xffffffffffffffff, 0xffffffffffffffd5}}, // x^1
+    coeff{false, raw128{0x0000000000000000, 0x0000000000002303}}, // x^2
+    coeff{true,  raw128{0x2aaaaaaaaaaaaaaa, 0xaaaaaaaaaab5fdfc}}, // x^3
+    coeff{false, raw128{0x0000000000000000, 0x0000000001f26c2c}}, // x^4
+    coeff{false, raw128{0x0222222222222222, 0x22222221ed6bcaf6}}, // x^5
+    coeff{false, raw128{0x0000000000000000, 0x00000003bebcfa5b}}, // x^6
+    coeff{true,  raw128{0x000d00d00d00d00d, 0x00d00d3150460b98}}, // x^7
+    coeff{false, raw128{0x0000000000000000, 0x000001d1d9260755}}, // x^8
+    coeff{false, raw128{0x00002e3bc74aad8e, 0x671f482940111ff5}}, // x^9
+    coeff{false, raw128{0x0000000000000000, 0x00004c848fe8f2a1}}, // x^10
+    coeff{true,  raw128{0x0000006b99159fd5, 0x138f9bb827d96109}}, // x^11
+    coeff{false, raw128{0x0000000000000000, 0x0004f89f2cb49c86}}, // x^12
+    coeff{false, raw128{0x00000000b092309d, 0x435990764dca8557}}, // x^13
+    coeff{false, raw128{0x0000000000000000, 0x0023982093aa672d}}, // x^14
+    coeff{true,  raw128{0x0000000000d73f9f, 0x39e413fee0897da0}}, // x^15
+    coeff{false, raw128{0x0000000000000000, 0x0071a7b9e769288c}}, // x^16
+    coeff{false, raw128{0x000000000000ca96, 0x3aeba3b55e476604}}, // x^17
+    coeff{false, raw128{0x0000000000000000, 0x00a05c0c810052f6}}, // x^18
+    coeff{true,  raw128{0x0000000000000097, 0xa5640ce27be7634a}}, // x^19
+    coeff{false, raw128{0x0000000000000000, 0x005dc655f2cb4676}}, // x^20
+    coeff{false, raw128{0x0000000000000000, 0x5c3ce5a90d3b5fbd}}, // x^21
+    coeff{false, raw128{0x0000000000000000, 0x00135ef987458258}}, // x^22
+    coeff{true,  raw128{0x0000000000000000, 0x00341d61afe341b7}}, // x^23
+    coeff{false, raw128{0x0000000000000000, 0x0000ee9140d6c815}}, // x^24
+}
+
+// Chebyshev coefficients for tan(x) in the range [0, 1/8]
+var tanChebyCoeffs = []coeff{
+    coeff{false, raw128{0x0000000000000000, 0x0000000000000000}}, // x^0
+    coeff{false, raw128{0xffffffffffffffff, 0xfffffffffffffffc}}, // x^1
+    coeff{false, raw128{0x0000000000000000, 0x0000000000001a3b}}, // x^2
+    coeff{false, raw128{0x5555555555555555, 0x5555555555117d57}}, // x^3
+    coeff{false, raw128{0x0000000000000000, 0x000000005d39a1e6}}, // x^4
+    coeff{false, raw128{0x2222222222222222, 0x222221d359182bd5}}, // x^5
+    coeff{false, raw128{0x0000000000000000, 0x00002cb73a706e48}}, // x^6
+    coeff{false, raw128{0x0dd0dd0dd0dd0dd0, 0xdcfbc044c649c199}}, // x^7
+    coeff{false, raw128{0x0000000000000000, 0x0569249a4516bfe1}}, // x^8
+    coeff{false, raw128{0x05993d220b043e7b, 0x8e8941c886ed5b97}}, // x^9
+    coeff{false, raw128{0x0000000000000038, 0x90aa776e55f5c50d}}, // x^10
+    coeff{false, raw128{0x0244dc6abcd83f8e, 0x84eea826c067fc66}}, // x^11
+    coeff{false, raw128{0x000000000000e963, 0x38782dcba8ebd309}}, // x^12
+    coeff{false, raw128{0x00eb69e870966cff, 0x2f0e25a40913178b}}, // x^13
+    coeff{false, raw128{0x00000000019d4bd6, 0x94cebfd7151f0621}}, // x^14
+    coeff{false, raw128{0x005f68d8fb56d151, 0xa61a9ca06b1e8592}}, // x^15
+    coeff{false, raw128{0x0000000144e1402c, 0xb5506c04661a9664}}, // x^16
+    coeff{false, raw128{0x0026aaf74fa25870, 0x99dc19ac2030564b}}, // x^17
+    coeff{false, raw128{0x0000006ffc0768b8, 0x15bb11fc8d092164}}, // x^18
+    coeff{false, raw128{0x000fa8f5fc566d31, 0xe3145152763ed761}}, // x^19
+    coeff{false, raw128{0x00000fc5b37d46b9, 0x8c8b105a9bdf1d45}}, // x^20
+    coeff{false, raw128{0x0006197409fc285b, 0xff614b97518e3ba4}}, // x^21
+    coeff{false, raw128{0x0000c294e90b449d, 0x541a3bf55ceb3c87}}, // x^22
+    coeff{false, raw128{0x0000feee4f90646d, 0xd2922eaca05e8219}}, // x^23
+    coeff{false, raw128{0x0001f944f287a03f, 0x8679b9dcc3a0431a}}, // x^24
+}
 

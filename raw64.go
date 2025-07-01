@@ -44,6 +44,11 @@ func div64(a, b, y raw64) (raw64, raw64) {
 	return raw64(q64), raw64(r64)
 }
 
+func neg64(a raw64) raw64 {
+	// Negate a raw64 value, treating it as a signed integer.
+	return raw64(-int64(a))
+}
+
 func uintMul64(a raw64, b uint64) raw64 {
 	// Perform integer multiplication of a raw64 value by a uint64 value, treating a as an unsigned integer.
 	// Does NOT handle overflow, so only use internally where overflow can't happen.

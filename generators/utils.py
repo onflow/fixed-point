@@ -38,7 +38,8 @@ def go_hex64(val):
     return f"0x{val:016x}"
 
 def go_hex128(val):
-    return f"raw128{{0x{(val >> 64):016x}, 0x{(val & MASK64):016x}}}"
+    val = int(val) & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+    return f"raw128{{0x{(val >> 64):016x}, 0x{(val & 0xFFFFFFFFFFFFFFFF):016x}}}"
 
 def parseInput64(s):
     s = s.strip()

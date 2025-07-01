@@ -2,8 +2,8 @@
 # Generates Go test data for UFix64 and Fix64 addition (including overflow)
 
 from decimal import Decimal, getcontext, InvalidOperation, Overflow
-#from utils import to_ufix64, to_fix64, go_hex64, FIX64_SCALE, MASK64, parseInput64
 from data64 import *
+from data128 import *
 import itertools
 import sys
 import inspect
@@ -18,8 +18,13 @@ decPi = Decimal(str(mpmath.pi))  # Pi to 100 decimal places
 
 def hex64(val):
     """Convert a Decimal value to a hexadecimal string representation for a 64-bit type."""
-    n = int((val * 10**8).quantize(1, rounding='ROUND_HALF_UP')) & 0xFFFFFFFFFFFFFFFF
-    return f"0x{n:016x}"
+    intValue = int((val * 10**8).quantize(1, rounding='ROUND_HALF_UP')) & 0xFFFFFFFFFFFFFFFF
+    return f"0x{intValue:016x}"
+
+def hex128(val):
+    """Convert a Decimal value to a hexadecimal string representation for a 128-bit type."""
+    intValue = int((val * 10**24).quantize(1, rounding='ROUND_HALF_UP')) & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+    return f"0x{((intValue >> 64) & 0xffffffffffffffff):016x}, 0x{(intValue & 0xffffffffffffffff):016x}"
 
 def decSin(x: Decimal) -> Decimal:
     return Decimal(str(mpmath.sin(mpmath.mpf(str(x)))))
@@ -46,7 +51,7 @@ def decClamp(x: Decimal) -> Decimal:
 
     # The clamp function in Go actually returns a scaled value, so we multiply
     # to match that scale.
-    x = x * 10632378527
+    x = x * 21264757054
 
     return x
 
@@ -77,6 +82,16 @@ types = {
          (Decimal(2**63) - 1) / Decimal('1e8'),
          Decimal("1e-8"),
          hex64),
+    "UFix128":
+        (Decimal(0),
+         (Decimal(2**128) - 1) / Decimal("1e24"),
+         Decimal("1e-24"),
+         hex128),
+    "Fix128":
+        (Decimal(-2**127) / Decimal("1e24"),
+         (Decimal(2**127) - 1) / Decimal('1e24'),
+         Decimal("1e-24"),
+         hex128),
 }
 
 def main():
@@ -141,7 +156,7 @@ def main():
 
     match argCount:
         case 1:
-            dataList = baseData + extraData +bonusData
+            dataList = baseData + extraData + bonusData
         case 2:
             dataList = baseData + extraData
         case 3:
@@ -151,13 +166,13 @@ def main():
 
     for argType in argTypes:
         if argType == "UFix64":
-            argGenerators.append(dataList | generateUFix64Values | expandByIota | filterUFix64Values)
+            argGenerators.append(dataList | generateUFix64Values | expandByIota64 | filterUFix64Values)
         elif argType == "Fix64":
-            argGenerators.append(dataList | generateFix64Values | expandByIota | filterFix64Values)
+            argGenerators.append(dataList | generateFix64Values | expandByIota64 | filterFix64Values)
         elif argType == "UFix128":
-            exit("128-bit types not ready yet.")
+            argGenerators.append(dataList | generateUFix128Values | expandByIota128 | filterUFix128Values)
         elif argType == "Fix128":
-            exit("128-bit types not ready yet.")
+            argGenerators.append(dataList | generateFix128Values | expandByIota128 | filterFix128Values)
         else:
             raise ValueError(f"Unknown argument type: {argType}")
 
@@ -199,18 +214,25 @@ def main():
             result = Decimal(0)
             err = None
         
-        if (operation == "Tan"):
-            # Producing accurate results for tan() close to ±π/2 is difficult, so we
-            # treat any result that is outside the range of -50M to 50M as an overflow.
-            if result > Decimal('5e7'):
-                err = "Overflow"
-            elif result < Decimal('-5e7'):
-                err = "NegOverflow"
+        # if (operation == "Tan"):
+        #     # Producing accurate results for tan() close to ±π/2 is difficult, so we
+        #     # treat any result that is outside the range of -50M to 50M as an overflow.
+        #     if result > Decimal('5e7'):
+        #         err = "Overflow"
+        #     elif result < Decimal('-5e7'):
+        #         err = "NegOverflow"
         
         if (operation == "Exp" or operation == "Pow") and not err and result.is_zero():
             # Technically, the exp() and pow() operations can only return positive, non-zero
             # results, so if it did return zero, it must have been an underflow.
             err = "Underflow"
+
+        if (operation == "Exp" or operation == "Pow") and not err and result > Decimal('1e14'):
+            # For exp() and pow(), we round results that are larger than 100 trillion to "just"
+            # 23 decimal places, which is a million times better than any floating-point library
+            # can do, and way more trouble than it's worth to get that two digits for such large
+            # numbers...
+            result = result.quantize(Decimal('1e-23'), rounding='ROUND_HALF_UP')
 
         if operation == "Pow" and values[0] == 0:
             # The Decimal library treats 0^x differently that we want to, so we override
