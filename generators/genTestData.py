@@ -227,12 +227,12 @@ def main():
             # results, so if it did return zero, it must have been an underflow.
             err = "Underflow"
 
-        if (operation == "Exp" or operation == "Pow") and not err and result > Decimal('1e14'):
+        # if (operation == "Exp" or operation == "Pow") and not err and result > Decimal('1e14'):
             # For exp() and pow(), we round results that are larger than 100 trillion to "just"
             # 23 decimal places, which is a million times better than any floating-point library
             # can do, and way more trouble than it's worth to get that two digits for such large
             # numbers...
-            result = result.quantize(Decimal('1e-23'), rounding='ROUND_HALF_UP')
+            # result = result.quantize(Decimal('1e-23'), rounding='ROUND_HALF_UP')
 
         if operation == "Pow" and values[0] == 0:
             # The Decimal library treats 0^x differently that we want to, so we override

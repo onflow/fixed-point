@@ -81,10 +81,10 @@ func TestDebugTwoArgTestCase64(t *testing.T) {
 	// t.Skip()
 
 	tc := TwoArgTestCase64{
-		A:        0x0000000000000001,
-		B:        0x0000000000000001,
+		A:        0x0000000005f5e101,
+		B:        0x01b69b4ba630f34e,
 		Expected: 0x0000000005f5e0ee,
-		err:      ErrOverflow,
+		err:      nil,
 	}
 
 	a := UFix64(tc.A)

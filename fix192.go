@@ -16,6 +16,195 @@ type fix192 struct {
 	f raw128
 }
 
+// A 192-bit fixed-point type used for transcendental calculations. It's uses a scale factor of
+// 10**24 * 2**64. This means that the top 128 bites are a valid UFix128 value or Fix128 value, with
+// the bottom 64 bits being an extension of the fractional part for additional precision. Using the
+// 10**24 factor makes converting between the 128-bit types and this type trivial, and without loss
+// of precision. The additional 2**64 factor is very easy to handle because a multiplication or
+// division by 2**64 can be handled just by selecting the appropriate raw64 components.
+type fix192_new struct {
+	Hi, Mid, Lo raw64
+}
+
+func (x UFix128) toFix192_new() fix192_new {
+	return fix192_new{x.Hi, x.Lo, raw64(0)}
+}
+
+func (x fix192_new) toUFix128() (UFix128, error) {
+	carry := raw64(0)
+
+	if !ult64(x.Lo, 0x8000000000000000) {
+		carry = 1
+	}
+
+	if isZero64(x.Hi) && isZero64(x.Mid) && !isZero64(x.Lo) && carry == 0 {
+		// If the high and mid parts are zero, and the low part is non-zero but less than 0.5, we
+		// flag underflow
+		return UFix128Zero, ErrUnderflow
+	}
+
+	return UFix128{x.Hi, x.Mid}.Add(UFix128{0, carry})
+}
+
+func (a fix192_new) isZero() bool {
+	return isZero64(a.Hi) && isZero64(a.Mid) && isZero64(a.Lo)
+}
+
+func add192(a, b fix192_new, carryIn uint64) (res fix192_new, carryOut uint64) {
+	res.Lo, carryOut = add64(a.Lo, b.Lo, carryIn)
+	res.Mid, carryOut = add64(a.Mid, b.Mid, carryOut)
+	res.Hi, carryOut = add64(a.Hi, b.Hi, carryOut)
+
+	return
+}
+
+func (a UFix128) Mul192(b UFix128) (UFix128, error) {
+	a192 := UFix128(a).toFix192_new()
+	b192 := UFix128(b).toFix192_new()
+	r192, err := a192.umul(b192)
+
+	if err != nil {
+		return UFix128Zero, err
+	}
+
+	if !a.IsZero() && !b.IsZero() && r192.isZero() {
+		// fixed 192 multiplication doesn't check for underflow, so we do it here
+		return UFix128Zero, ErrUnderflow
+	}
+
+	return r192.toUFix128()
+}
+
+func (a fix192_new) umul(b fix192_new) (fix192_new, error) {
+	// The basic logic here is the same as the logic in mul128(), so check that code for more
+	// details. Each section below computes terms of "one row" of the long-form multiplicaiton that
+	// you would do by hand. We then add all of these results together at the end. We compute the
+	// rows into their own variables (instead of using) some kind of accumulator pattern) in the
+	// hopes that the compiler/CPU can pipeline and/or parallelize the operations better.
+	//
+	// The overal multiplication is a 192x192 multiplication that would produce a 384-bit result,
+	// except that we immediately throw out the least significant 64 bits of the result because
+	// we need to divide the result by 2**64 at the end anyway. We collect the remaining 320 bits
+	// into two 192-bit values, one that holds the bottom 192 bits of the result, and one that
+	// holds the top 128 bits of the result.
+	var c uint64
+
+	// Row 1 only has values in the low part of the result
+	var r1Lo fix192_new
+
+	// We're multiplying the entire 192-bit a value by the low bits of b. This is a 192x64
+	// multiplication that produces a 256-bit result. However, we discard the low 64-bits
+	// since we are multiplying two values that are each scaled by a factor of 2**64 and would
+	// just need to divide by 2**64 at the end to get the right result.
+	r1_t1, r1_t2 := mul128By64(raw128{a.Mid, a.Lo}, b.Lo)
+	r1_t3, r1_t4 := mul64(a.Hi, b.Lo)
+
+	r1Lo.Lo = r1_t2.Hi
+	r1Lo.Mid, c = add64(r1_t1.Lo, r1_t4, 0)
+	r1Lo.Hi, _ = add64(r1_t3, 0, c)
+
+	// See if we need to round up the low part of the result by adding 1 if the low part is >= 0.5
+	_, carry := add64(r1_t2.Lo, 0x8000000000000000, 0)
+
+	// Row 2 contributes to the top and bottom parts of the result
+	var r2Hi, r2Lo fix192_new
+
+	r2_t1, r2_t2 := mul128By64(raw128{a.Mid, a.Lo}, b.Mid)
+	r2_t3, r2_t4 := mul64(a.Hi, b.Mid)
+
+	r2Lo.Lo = r2_t2.Lo
+	r2Lo.Mid = r2_t2.Hi
+	r2Lo.Hi, c = add64(r2_t1.Lo, r2_t4, 0)
+	r2Hi.Lo, _ = add64(r2_t3, 0, c)
+
+	// Row 3 contributes to the top and bottom parts of the result
+	var r3Hi, r3Lo fix192_new
+
+	r3_t1, r3_t2 := mul128By64(raw128{a.Mid, a.Lo}, b.Hi)
+	r3_t3, r3_t4 := mul64(a.Hi, b.Hi)
+
+	r3Lo.Mid = r3_t2.Lo
+	r3Lo.Hi = r3_t2.Hi
+	r3Hi.Lo, c = add64(r3_t1.Lo, r3_t4, 0)
+	r3Hi.Mid, _ = add64(r3_t3, 0, c)
+
+	// Add up the three rows to get an interim result (that still needs to be scaled down by 10**24)
+	var interimLo, interimHi fix192_new
+	var carry1, carry2 uint64
+	interimLo, carry1 = add192(r1Lo, r2Lo, carry)
+	interimLo, carry2 = add192(interimLo, r3Lo, 0)
+
+	interimHi, _ = add192(r2Hi, r3Hi, carry1)
+	interimHi, _ = add192(interimHi, fix192_new{}, carry2)
+
+	// We now need to scale this result down by 10**24, which either fits into 192 bits, or
+	// overflows the type. We do this in two steps:
+	// 1. We shift everything down by 24 bits. This is equivalent to dividing the result by 2**24,
+	//    which is leaves us still needing us to divide by 5**24. However, this is enough to
+	//    shrink the divisor to fit in 64-bits, dramatically simplifying the division. We can also
+	//    check for overflow after the shift since the result will only fit in 192 if the part that
+	//    extends beyond the bottom 192 bits is less than 5**24 before the division.
+	// 2. After shifting down and checking for overflow, we divide the result by 5**24 and return.
+
+	// This check is here in case someone changes the Fix128Scale constant. It should compile to
+	// a no-op if the constant is correct.
+	if Fix128Scale != 1e24 {
+		panic("fix192 assumes Fix128Scale equals 10e24")
+	}
+
+	interimLo = interimLo.ushiftRight(24)
+	interimLo.Hi |= shiftLeft64(interimHi.Lo, 40)
+	interimHi = interimHi.ushiftRight(24)
+
+	fiveToThe24th := raw64(0xd3c21bcecceda1)
+
+	// We know that interimHi.Hi is zero, since we never assigned any value to it, and the only
+	// possible way it could be have values in it is from overflow during the addition. But that
+	// was before we shifted right by 24 bits, which is much larger than any conceivable overflow
+	// from addition! However, we could still have a value in interimHi.Mid, and we also need
+	// interimHi.Lo to be less than fiveToThe24th, so that after the division, the result fits
+	// in 192 bits.
+	if !isZero64(interimHi.Mid) || !ult64(interimHi.Lo, fiveToThe24th) {
+		return fix192_new{}, ErrOverflow
+	}
+
+	quo, rem := div256by64(interimHi.Lo, interimLo.Hi, interimLo.Mid, interimLo.Lo, fiveToThe24th)
+
+	// if ushouldRound64(rem, fiveToThe24th) {
+	// 	// If the remainder is greater than or equal to 0.5, we round up.
+	// 	quo, _ = add192(quo, fix192_new{}, 1)
+	// }
+	_ = rem
+
+	return quo, nil
+}
+
+func div256by64(xhi, hi, mid, lo raw64, y raw64) (quo fix192_new, rem raw64) {
+	quo.Hi, rem = div64(xhi, hi, y)
+	quo.Mid, rem = div64(rem, mid, y)
+	quo.Lo, rem = div64(rem, lo, y)
+
+	return quo, rem
+}
+
+func (x fix192_new) ushiftRight(shift uint64) (res fix192_new) {
+	if shift >= 64 {
+		panic("fix192 only supports shifts less than 64")
+	}
+
+	if shift == 0 {
+		return x
+	}
+
+	res.Lo = ushiftRight64(x.Lo, shift)
+	res.Lo |= shiftLeft64(x.Mid, 64-shift)
+	res.Mid = ushiftRight64(x.Mid, shift)
+	res.Mid |= shiftLeft64(x.Hi, 64-shift)
+	res.Hi = ushiftRight64(x.Hi, shift)
+
+	return res
+}
+
 func (x UFix64) toFix192() fix192 {
 	// Convert Fix64 to fix192 by extracting the integer and fractional parts.
 	intPart := uint64(x) / uint64(Fix64Scale)
@@ -35,7 +224,8 @@ func (x UFix64) toFix192() fix192 {
 func (x Fix64) toFix192() fix192 {
 	xUnsigned, sign := x.Abs()
 	res := xUnsigned.toFix192()
-	return res.applySign(sign)
+	res, _ = res.applySign(sign) // can't fail, input is well within the range of fix192
+	return res
 }
 
 func (x UFix128) toFix192() fix192 {
@@ -43,19 +233,20 @@ func (x UFix128) toFix192() fix192 {
 	intPart, fracPart := div128(raw128Zero, raw128(x), raw128(Fix128One))
 	fracPart128, rem := div128(fracPart, raw128Zero, raw128(Fix128One))
 
-	if rem.Hi >= 0x8000000000000000 {
+	if ushouldRound128(rem, raw128(Fix128One)) {
 		// If the remainder is greater than or equal to 0.5, we round up
 		// (Can't overflow since we are working at much higher precision than the input.)
 		fracPart128, _ = add128(fracPart128, raw128Zero, 1)
 	}
 
-	return fix192{i: raw64(intPart.Lo), f: fracPart128}
+	return fix192{i: intPart.Lo, f: fracPart128}
 }
 
 func (x Fix128) toFix192() fix192 {
 	xUnsigned, sign := x.Abs()
 	res := xUnsigned.toFix192()
-	return res.applySign(sign)
+	res, _ = res.applySign(sign) // can't fail, input is well within the range of fix192
+	return res
 }
 
 func (a fix192) toUFix64() (UFix64, error) {
@@ -126,25 +317,25 @@ func (a fix192) toUFix128() (UFix128, error) {
 		return UFix128Zero, ErrOverflow
 	}
 
-	var HundredTrillion = raw128{0x4b3b4ca85a86c47a, 0x098a224000000000}
+	// var HundredTrillion = raw128{0x4b3b4ca85a86c47a, 0x098a224000000000}
 
-	if !ult128(res, HundredTrillion) {
-		// 2^64 % 10 = 6, so we multiply the modulus of the high part by 6
-		lastDigit := ((res.Hi%10)*6 + (res.Lo % 10)) % 10
+	// if !ult128(res, HundredTrillion) {
+	// 	// 2^64 % 10 = 6, so we multiply the modulus of the high part by 6
+	// 	lastDigit := ((res.Hi%10)*6 + (res.Lo % 10)) % 10
 
-		if lastDigit >= 5 {
-			// If the last digits are 50 or greater, we round up.
-			res, carry = add128(raw128(res), raw128{0, 10 - lastDigit}, 0)
+	// 	if lastDigit >= 5 {
+	// 		// If the last digits are 50 or greater, we round up.
+	// 		res, carry = add128(raw128(res), raw128{0, 10 - lastDigit}, 0)
 
-			if carry != 0 {
-				// If there was a carry, the result overflowed.
-				return UFix128Zero, ErrOverflow
-			}
-		} else {
-			// Round down
-			res, _ = sub128(raw128(res), raw128{0, lastDigit}, 0)
-		}
-	}
+	// 		if carry != 0 {
+	// 			// If there was a carry, the result overflowed.
+	// 			return UFix128Zero, ErrOverflow
+	// 		}
+	// 	} else {
+	// 		// Round down
+	// 		res, _ = sub128(raw128(res), raw128{0, lastDigit}, 0)
+	// 	}
+	// }
 
 	return UFix128(res), nil
 }
@@ -172,34 +363,47 @@ func (a fix192) eq(b fix192) bool {
 	return isEqual64(a.i, b.i) && isEqual128(a.f, b.f)
 }
 
-func (x fix192) applySign(sign int64) fix192 {
-	if sign < 0 {
-		x.i = neg64(x.i)
-		if !isZero128(x.f) {
-			// If the fractional part is non-zero, we subtract one from the integer part
-			// and flip the sign of the fractional part by subtracting it from zero.
-			x.i, _ = sub64(x.i, raw64Zero, 1)
-			x.f, _ = sub128(raw128Zero, x.f, 0)
-		}
+func (x fix192) applySign(sign int64) (fix192, error) {
+	if isZero64(x.i) && isZero128(x.f) {
+		// If the input is zero, we can return it as is, regardless of the sign.
+		return x, nil
 	}
 
-	return x
+	if sign < 0 {
+		x = x.neg()
+
+		// If trying to make it negative didn't make it negative, the input is too
+		// large to represent as a negative value.
+		if !isNeg64(x.i) {
+			return fix192{}, ErrNegOverflow
+		}
+	} else if isNeg64(x.i) {
+		// If the input looks negative to start with, it's too big to represent
+		return fix192{}, ErrOverflow
+	}
+
+	return x, nil
 }
 
 func (x fix192) abs() (fix192, int64) {
 	if isNeg64(x.i) {
-		x.i = neg64(x.i)
-		if !isZero128(x.f) {
-			// If the fractional part is non-zero, we subtract one from the integer part
-			// and flip the sign of the fractional part by subtracting it from zero.
-			x.i, _ = sub64(x.i, raw64Zero, 1)
-			x.f, _ = sub128(raw128Zero, x.f, 0)
-		}
-
-		return x, -1
+		return x.neg(), -1
 	}
 
 	return x, 1
+}
+
+func (x fix192) neg() fix192 {
+	x.i = neg64(x.i)
+
+	if !isZero128(x.f) {
+		// If the fractional part is non-zero, we subtract one from the integer part
+		// and flip the sign of the fractional part by subtracting it from zero.
+		x.i, _ = sub64(x.i, raw64Zero, 1)
+		x.f, _ = sub128(raw128Zero, x.f, 0)
+	}
+
+	return x
 }
 
 func (x fix192) shiftLeft(shift uint64) (res fix192) {
@@ -253,14 +457,7 @@ func (a fix192) sub(b fix192) (res fix192) {
 	return res
 }
 
-func (a fix192) umul(b fix192) (fix192, error) {
-	// a = a.i + a.f, b = b.i + b.f
-	// a•b = (a.i + a.f)•(b.i + b.f)
-	//      = a.i•b.i + a.i•b.f + a.f•b.i + a.f•b.f
-	if isNeg64(a.i) || isNeg64(b.i) {
-		panic("mul() not implemented for negative fix192 values")
-	}
-
+func (a fix192) umulFull(b fix192) (fix192, error) {
 	// Compute the integer part of term one
 	hi, i1 := mul64(a.i, b.i)
 	if !isZero64(hi) {
@@ -298,18 +495,42 @@ func (a fix192) umul(b fix192) (fix192, error) {
 	return res, nil
 }
 
+func (a fix192) umul(b fix192) (fix192, error) {
+	// a = a.i + a.f, b = b.i + b.f
+	// a•b = (a.i + a.f)•(b.i + b.f)
+	//      = a.i•b.i + a.i•b.f + a.f•b.i + a.f•b.f
+	if isZero64(a.i) {
+		if isZero64(b.i) {
+			return fix192{0, a.f.mulFrac(b.f)}, nil
+		} else {
+			return b.mulByFraction(a.f), nil
+		}
+	} else if isZero64(b.i) {
+		return a.mulByFraction(b.f), nil
+	} else {
+		return a.umulFull(b)
+	}
+}
+
 func (a fix192) smul(b fix192) (fix192, error) {
 	aUnsigned, aSign := a.abs()
 	bUnsigned, bSign := b.abs()
+	rSign := aSign * bSign
 
 	resUnsigned, err := aUnsigned.umul(bUnsigned)
 
-	if err != nil {
+	if err == ErrOverflow {
+		if rSign < 0 {
+			return fix192{}, ErrNegOverflow
+		} else {
+			return fix192{}, ErrOverflow
+		}
+	} else if err != nil {
 		return fix192{}, err
 	}
 
 	// Apply the sign to the result
-	return resUnsigned.applySign(aSign * bSign), nil
+	return resUnsigned.applySign(rSign)
 }
 
 // Multiplies the fractional parts of fix192 values, can't overflow, but it CAN underflow
@@ -485,6 +706,14 @@ func (x fix192) exp() (fix192, error) {
 }
 
 func (a fix192) pow(b fix192, prescale uint64) (fix192, error) {
+	aBitLessThanOne := fix192{0, raw128{0xe000000000000000, 0}}
+	aBitMoreThanOne := fix192{1, raw128{0x2000000000000000, 0}}
+
+	// Use powNearOne() for values close to 1 if the exponent is large
+	if slt64(raw64(10), b.i) && prescale == 0 && aBitLessThanOne.lt(a) && a.lt(aBitMoreThanOne) {
+		return a.powNearOne(b)
+	}
+
 	aLn, err := a.ln(prescale)
 
 	if err != nil {
@@ -501,6 +730,8 @@ func (a fix192) pow(b fix192, prescale uint64) (fix192, error) {
 }
 
 func (x raw128) fracExp() fix192 {
+	return x.chebyPoly(expChebyCoeffs)
+
 	// We compute the fractional exp using the typical Taylor series:
 	// e^x = 1 + x + x^2/2! + x^3/3! + x^4/4! + ...
 	// However, we can make some simplifying assumptions that speed up the calculations:
@@ -510,27 +741,27 @@ func (x raw128) fracExp() fix192 {
 	//    computations on the fractional part.
 	// 3. Multiplication of two fractional 128-bit values is very easy, we just do a 128x128-> 256 bit
 	//    multiplication, and just use the top 128 bits of the result.
-	term := x
-	sum := term
-	iter := uint64(1)
-	i := raw64(1)
+	// term := x
+	// sum := term
+	// iter := uint64(1)
+	// i := raw64(1)
 
-	for {
-		term = term.mulFrac(x)
+	// for {
+	// 	term = term.mulFrac(x)
 
-		iter++
-		term = uintDiv128(term, iter)
+	// 	iter++
+	// 	term = uintDiv128(term, iter)
 
-		if isZero128(term) {
-			break
-		}
+	// 	if isZero128(term) {
+	// 		break
+	// 	}
 
-		var carry uint64
-		sum, carry = add128(sum, term, 0)
-		i, _ = add64(i, raw64Zero, carry)
-	}
+	// 	var carry uint64
+	// 	sum, carry = add128(sum, term, 0)
+	// 	i, _ = add64(i, raw64Zero, carry)
+	// }
 
-	return fix192{i, sum}
+	// return fix192{i, sum}
 }
 
 func (x fix192) sin() (fix192, error) {
@@ -538,7 +769,7 @@ func (x fix192) sin() (fix192, error) {
 
 	res := clampedX.chebySin()
 
-	return res.applySign(sign), nil
+	return res.applySign(sign)
 }
 
 func (x fix192) cos() (fix192, error) {
@@ -567,7 +798,7 @@ func (x fix192) cos() (fix192, error) {
 
 	res := y.chebySin()
 
-	return res.applySign(sign), nil
+	return res.applySign(sign)
 }
 
 func (x fix192) tan() (fix192, error) {
@@ -580,8 +811,8 @@ func (x fix192) tan() (fix192, error) {
 
 	if clampedX.lt(fix192{0, raw128{0x1000000000000000, 0}}) {
 		// If the value is less than 1/8, we can direcly use our chebyTan() calculation
-		res := fix192{0, clampedX.f.chebyTan()}
-		return res.applySign(sign), nil
+		res := clampedX.f.chebyTan()
+		return res.applySign(sign)
 	}
 
 	var y fix192
@@ -600,7 +831,7 @@ func (x fix192) tan() (fix192, error) {
 			// tan(π/2 - x) = 1 / tan(x)
 			// We compute tan(x) using the chebyTan() method, and then take the inverse.
 			inverseTan := y.f.chebyTan()
-			res, err := inverseTan.inverse()
+			res, err := inverseTan.f.inverse()
 
 			if err != nil {
 				if sign < 0 {
@@ -610,7 +841,7 @@ func (x fix192) tan() (fix192, error) {
 				}
 			}
 
-			return res.applySign(sign), nil
+			return res.applySign(sign)
 		}
 	} else {
 		// The input is greater than π/2, see if it's close enough to use the chebyTan() method.
@@ -622,7 +853,7 @@ func (x fix192) tan() (fix192, error) {
 				inverseTan := halfPiDiff.chebyTan()
 				// tan(x) = -tan(π/2 - x)
 				sign *= -1
-				res, err := inverseTan.inverse()
+				res, err := inverseTan.f.inverse()
 
 				if err != nil {
 					if sign < 0 {
@@ -632,7 +863,7 @@ func (x fix192) tan() (fix192, error) {
 					}
 				}
 
-				return res.applySign(sign), nil
+				return res.applySign(sign)
 			}
 		}
 
@@ -647,7 +878,7 @@ func (x fix192) tan() (fix192, error) {
 
 	if cosX.i == 1 {
 		// If cosX is 1, we can just return sinX as the result.
-		return sinX.applySign(sign), nil
+		return sinX.applySign(sign)
 	} else if isZero128(cosX.f) || isIota128(cosX.f) {
 		// If cosX is zero or iota, we treat it as overflow
 		if sign < 0 {
@@ -682,7 +913,7 @@ func (x fix192) tan() (fix192, error) {
 
 		res := fix192{i: quoHi.Lo, f: quoLo}
 
-		return res.applySign(sign), nil
+		return res.applySign(sign)
 	}
 }
 
@@ -717,33 +948,48 @@ func (x fix192) clampAngle() (fix192, int64) {
 // Computes a Chebyshev polynomial at a particular x value. This method
 // assumes that the input, coefficients AND result are all strictly less
 // than 1.0, with the input and output also being positive.
-func (x raw128) chebyPoly(coeffs []coeff) raw128 {
-	// Because we have very efficient math functions for fractional values,
-	// we can't use Horner's method for polynomial expansion here. Some of the
-	// interim values can end up outside the range (0, 1). However, if we do a more
-	// naive implementation we have a few extra multiplications, but we know that
-	// we'll never end up with an intermediate value outside of a simple fractional
-	// value (with the functions we are using, anyway!)
+// func (x raw128) chebyPolyOld(coeffs []coeff) raw128 {
+// 	// Because we have very efficient math functions for fractional values,
+// 	// we can't use Horner's method for polynomial expansion here. Some of the
+// 	// interim values can end up outside the range (0, 1). However, if we do a more
+// 	// naive implementation we have a few extra multiplications, but we know that
+// 	// we'll never end up with an intermediate value outside of a simple fractional
+// 	// value (with the functions we are using, anyway!)
 
-	// Start with the constant term (usually zero)
-	accum := coeffs[0].value
+// 	// Start with the constant term (usually zero)
+// 	accum := coeffs[0].value
 
-	// The current power of x we are computing. Starting with x^1.
-	pow := x
-	term := pow.mulFrac(coeffs[1].value)
-	accum, _ = add128(accum, term, 0)
+// 	// The current power of x we are computing. Starting with x^1.
+// 	pow := x
+// 	term := pow.mulFrac(coeffs[1].value)
+// 	accum, _ = add128(accum, term, 0)
 
-	for i := 2; i < len(coeffs); i++ {
-		pow = pow.mulFrac(x)
-		term = pow.mulFrac(coeffs[i].value)
-		if coeffs[i].isNeg {
-			accum, _ = sub128(accum, term, 0)
-		} else {
-			accum, _ = add128(accum, term, 0)
-		}
+// 	for i := 2; i < len(coeffs); i++ {
+// 		pow = pow.mulFrac(x)
+// 		term = pow.mulFrac(coeffs[i].value)
+// 		if coeffs[i].isNeg {
+// 			accum, _ = sub128(accum, term, 0)
+// 		} else {
+// 			accum, _ = add128(accum, term, 0)
+// 		}
+// 	}
+
+// 	return accum
+// }
+
+// Computes a Chebyshev polynomial at a particular x value. This method
+// assumes that the input, coefficients AND result are all strictly less
+// than 1.0, with the input and output also being positive.
+func (x raw128) chebyPoly(coeffs []fix192) fix192 {
+	// Compute the Chebyshev polynomial using Horner's method.
+	accum := coeffs[0]
+
+	for i := 1; i < len(coeffs); i++ {
+		accum, _ = accum.smul(fix192{raw64Zero, x})
+		accum = accum.add(coeffs[i])
 	}
 
-	return accum
+	return accum // .intDiv(1048576)
 }
 
 func (x fix192) chebySin() fix192 {
@@ -803,21 +1049,24 @@ func (x fix192) chebySin() fix192 {
 	// This polynomial expansion will never result in 1.0. The only positive inputs for sin()
 	// that result in 1.0 are larger than 1 (specifically, π/2), and we only use the polynomial
 	// expansion for values less than 1.0. (See the if x.i == 1 block above for more details.)
-	return fix192{0, sum}
+	return sum
 }
 
 // Returns tan(x) for very small x values, using the Chebyshev polynomial. Input and output
 // must be strictly less than 1.0, and positive.
-func (x raw128) chebyTan() raw128 {
+func (x raw128) chebyTan() fix192 {
 	return x.chebyPoly(tanChebyCoeffs)
 }
 
 // A multiplication funcion that multiplies a complete fix192 value
-// by a raw128 fractional value.
+// by a raw128 fractional value, assumes a positive fix192 value.
 func (a fix192) mulByFraction(b raw128) (res fix192) {
 	// a = a.i + a.f, b = b.f
 	// a•b = (a.i + a.f)•b
 	//      = a.i•b + a.f•b
+	if isNeg64(a.i) {
+		panic("mulByFraction() not implemented for negative fix192 values")
+	}
 
 	i1, f1 := mul128By64(b, a.i)
 	f2, lo := mul128(a.f, b)
@@ -863,4 +1112,96 @@ func (x raw128) inverse() (fix192, error) {
 	}
 
 	return est, nil
+}
+
+func (a fix192) intDiv(b uint64) (res fix192) {
+	q := uint64(a.i) / b
+	r := uint64(a.i) % b
+
+	var rem raw128
+	res.i = raw64(q)
+	res.f, rem = div192by128(raw64(r), a.f.Hi, a.f.Lo, unscaledRaw128(b))
+
+	if ushouldRound64(rem.Lo, raw64(b)) {
+		res.f, _ = add128(res.f, raw128Zero, 1)
+	}
+
+	return res
+}
+
+func (a fix192) powNearOne(b fix192) (fix192, error) {
+	// It's hard to get precision for large powers of numbers close to 1, because ln(a)
+	// is very small and lacking precision, and any error is magnified a large exponent.
+	// Instead, we can directly compute b•ln(a) by using a different expansion of ln(a).
+	//
+	// We start with the Taylor/Maclaurin series for values close to 1:
+	//     ln(1 + ε) ≈ ε - (ε^2)/2 + (ε^3)/3 - ...
+	//
+	// We combine this with:
+	//     a^b = exp(b * ln(a))
+	//
+	// Instead of computing ln(a) by itself, we compute b * ln(1 + ε) as:
+	//     b * ln(1 + ε) ≈ b•ε - b•(ε^2)/2 + b•(ε^3)/3 - ...
+	// Note that this works for both positive and negative values of ε or b.
+
+	epsilon := a.sub(fix192{1, raw128Zero})
+
+	epsilon, eSign := epsilon.abs()
+	b, bSign := b.abs()
+
+	term, err := epsilon.umul(b)
+
+	if err == ErrNegOverflow {
+		// If the product overflows in the negative direction, the exponential
+		// would underflow.
+		return fix192{}, ErrUnderflow
+	} else if err != nil {
+		return fix192{}, err
+	}
+
+	sum := term
+	iter := uint64(1)
+
+	if eSign < 0 {
+		// If epsilon is negative, all of the odd terms (including the first!) will
+		// be negative, and all of the even terms are negative already. So, we can just
+		// do the whole expansion treating all terms as positive and then flip the sign
+		// at the end (which we can do by just flipping the sign of b!)
+		bSign *= -1
+
+		for {
+			term = term.mulByFraction(epsilon.f)
+			if isZero64(term.i) && isZero128(term.f) {
+				break
+			}
+			iter++
+			sum = sum.add(term.intDiv(iter))
+		}
+	} else {
+		// If epsilon is positive, we need to alternate between adding and subtracting
+		// terms. We do this by just unrolling the loop and literally switching between
+		// addition and subtraction.
+		iter := uint64(1)
+
+		for {
+			term = term.mulByFraction(epsilon.f)
+			if isZero64(term.i) && isZero128(term.f) {
+				break
+			}
+			iter++
+			sum = sum.sub(term.intDiv(iter))
+
+			term = term.mulByFraction(epsilon.f)
+			if isZero64(term.i) && isZero128(term.f) {
+				break
+			}
+			iter++
+			sum = sum.add(term.intDiv(iter))
+		}
+	}
+
+	// We know that sum is strictly less than b, so applySign can't fail
+	expValue, _ := sum.applySign(bSign)
+
+	return expValue.exp()
 }

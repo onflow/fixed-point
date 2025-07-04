@@ -1,5 +1,7 @@
 package fixedPoint
 
+import "math/bits"
+
 var raw128Zero = raw128{0, 0}
 
 // This file contains methods for raw64 to provide all of the basic functionality that
@@ -80,6 +82,32 @@ func div128(hi, lo, y raw128) (quo raw128, rem raw128) {
 		panic("div128: division by zero")
 	}
 
+	var remResidual uint64
+	remShift := uint64(bits.TrailingZeros64(uint64(y.Lo)))
+
+	if remShift != 0 {
+		// If the denominator has trailing zeros, we can both the numerator and denominator
+		// by the same amount to potentially reduce the size of the numbers involved (in particular,
+		// this could turn the denominator into a 64-bit value or the numerator into a 192-bit value,
+		// either of which is much cheaper to compute).
+		//
+		// This will result in the same quotient, but the remainder will be scaled down by the same
+		// shifted factor, AND be missing the bottom bits that were shifted out. We save those bits
+		// now to re-add to the remainder later.
+		remMask := uint64(1<<remShift) - 1
+		remResidual = uint64(lo.Lo) & remMask
+
+		// Divide the numerator (nothing lost here, the bits that are falling off are all zeros)
+		y = ushiftRight128(y, remShift)
+
+		// Shift the numerator down by the same amount, we saved the bottom bits of the lo part
+		// above (remResidual), but we need to bring the low part of the high part down into
+		// the high part of the low part!
+		lo = ushiftRight128(lo, remShift)
+		lo.Hi |= (hi.Lo << (64 - remShift))
+		hi = ushiftRight128(hi, remShift)
+	}
+
 	// Special case: denominator fits in 64 bits
 	if y.Hi == 0 {
 		// If the denominator fits in 64 bits, we know that the EITHER the numerator
@@ -89,22 +117,32 @@ func div128(hi, lo, y raw128) (quo raw128, rem raw128) {
 			panic("div128: overflow")
 		}
 
-		qHi, r := div64(hi.Lo, lo.Hi, y.Lo)
-		qLo, r := div64(r, lo.Lo, y.Lo)
-		return raw128{qHi, qLo}, raw128{0, r}
+		quo, rem = div192by64(hi.Lo, lo.Hi, lo.Lo, y.Lo)
+	} else if hi.Hi == 0 {
+		// If the high part of the numerator is zero, we can use a single pass of our 192x128
+		// division algorithm
+		quo, rem = div192by128(hi.Lo, lo.Hi, lo.Lo, y)
+	} else {
+		// We use the "divide and conquer" approach to compute the quotient of a 256-bit numerator
+		// by a 128-bit denominator. It involves two calls to a 192 over 128 division algorithm,
+		// ("3 by 2" division)
+		var qHi, rHi, qLo raw128
+		qHi, rHi = div192by128(hi.Hi, hi.Lo, lo.Hi, y)
+		qLo, rem = div192by128(rHi.Hi, rHi.Lo, lo.Lo, y)
+
+		// Effectively multiple qHi by 2^64, assuming that qHi is under 2^64 to start with
+		qHi.Hi = qHi.Lo
+		qHi.Lo = 0
+
+		quo, _ = add128(qHi, qLo, 0)
 	}
 
-	// We use the "divide and conquer" approach to compute the quotient of a 256-bit numerator
-	// by a 128-bit denominator. It involves two calls to a 192 over 128 division algorithm,
-	// ("3 by 2" division)
-	qHi, rHi := div192by128(hi.Hi, hi.Lo, lo.Hi, y)
-	qLo, rem := div192by128(rHi.Hi, rHi.Lo, lo.Lo, y)
-
-	// Effectively multiple qHi by 2^64, assuming that qHi is under 2^64 to start with
-	qHi.Hi = qHi.Lo
-	qHi.Lo = 0
-
-	quo, _ = add128(qHi, qLo, 0)
+	if remShift != 0 {
+		// We shifted before dividing, so we need to unshift the remainder and add back in the
+		// residual bits from the numerator
+		rem = shiftLeft128(rem, remShift)
+		rem.Lo |= raw64(remResidual)
+	}
 
 	return quo, rem
 }
@@ -452,4 +490,14 @@ func div192by128(hi, mid, lo raw64, y raw128) (quo raw128, rem raw128) {
 	}
 
 	return
+}
+
+func div192by64(hi, mid, lo raw64, y raw64) (quo raw128, rem raw128) {
+	qHi, r := div64(hi, mid, y)
+	qLo, r := div64(r, lo, y)
+
+	quo = raw128{qHi, qLo}
+	rem = raw128{0, r}
+
+	return quo, rem
 }

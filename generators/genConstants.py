@@ -135,24 +135,21 @@ sinIota = (Decimal(6) * maxError) ** (Decimal(1) / Decimal(3))
 # We now have a list of coefficients for the Chebyshev polynomial for sin(x).
 # in the range [sinIota, pi/4], with error less than maxError.
 sinCoeffs = mp.chebyfit(mp.sin, [0, 1], 25)
-sinCoeffs = reversed(sinCoeffs)  # Reverse so that the index matches the power of x
+# sinCoeffs = reversed(sinCoeffs)  # Reverse so that the index matches the power of x
 tanCoeffs = mp.chebyfit(mp.tan, [0, 1/8], 25)
-tanCoeffs = reversed(tanCoeffs)  # Reverse so that the index matches the power of x
+# tanCoeffs = reversed(tanCoeffs)  # Reverse so that the index matches the power of x
+expCoeffs = mp.chebyfit(mp.exp, [0, 1], 25)
 
 def printChebyCoeff(coeffs):
     for i, coeff in enumerate(coeffs):
-        decCoeff = Decimal(str(coeff))
-        if decCoeff < 0:
-            isNeg = True
-            decCoeff = -decCoeff
-        else:
-            isNeg = False
+        decCoeff = Decimal(str(coeff)) # * (2**20)
+        intValue = int((decCoeff * 2**128).to_integral_value(rounding=ROUND_HALF_UP))
 
-        if decCoeff >= 1:
-            # All coefficients must have a mangnitude less than 1
-            raise ValueError(f"Coefficient {i} is too large: {decCoeff}")
+        intString = f"0x{(intValue >> 128 & 0xffffffffffffffff):016x}"
+        fracString= f"raw128{{0x{(intValue >> 64 & 0xffffffffffffffff):016x}, 0x{(intValue & 0xffffffffffffffff):016x}}}"
+        hexString = f"{{i: {intString}, f: {fracString}}}"
 
-        print(f"    coeff{{{"true, " if isNeg else "false,"} {go_hex128((decCoeff * 2**128).quantize(Decimal(1), rounding=ROUND_HALF_UP))}}}, // x^{i}")
+        print(f"    fix192{hexString}, // x^{i}")
 
 
 # Output Go code
@@ -297,17 +294,22 @@ def main():
     print("}")
     print("const smallestExpIntPower = ", int(minLn128) - 1)
     print()
-    print("// Used for Chebyshev coefficients")
-    print("type coeff struct { isNeg bool; value raw128 }")
-    print()
+    # print("// Used for Chebyshev coefficients")
+    # print("type coeff struct { isNeg bool; value raw128 }")
+    # print()
     print("// Chebyshev coefficients for sin(x) in the range [0, 1]")
-    print("var sinChebyCoeffs = []coeff{")
+    print("var sinChebyCoeffs = []fix192{")
     printChebyCoeff(sinCoeffs)
     print("}")
     print()
     print("// Chebyshev coefficients for tan(x) in the range [0, 1/8]")
-    print("var tanChebyCoeffs = []coeff{")
+    print("var tanChebyCoeffs = []fix192{")
     printChebyCoeff(tanCoeffs)
+    print("}")
+    print()
+    print("// Chebyshev coefficients for exp(x) in the range [0, 1]")
+    print("var expChebyCoeffs = []fix192{")
+    printChebyCoeff(expCoeffs)
     print("}")
     print()
 

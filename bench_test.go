@@ -38,8 +38,8 @@ func BenchmarkSubUFix64_Ref(b *testing.B) {
 }
 
 func BenchmarkMulUFix64(b *testing.B) {
-	a := UFix64(123456789)
-	c := UFix64(987654321)
+	a := UFix64(123456789123456789)
+	c := UFix64(123456789)
 	for i := 0; i < b.N; i++ {
 		_, _ = a.Mul(c)
 	}
@@ -58,9 +58,25 @@ func BenchmarkMulUFix64_Ref(b *testing.B) {
 	}
 }
 
+func BenchmarkMulUFix128(b *testing.B) {
+	a := UFix128{123456789123456789, 12345679123456789}
+	c := UFix128{123456789, 12345678912345689}
+	for i := 0; i < b.N; i++ {
+		_, _ = a.Mul(c)
+	}
+}
+
+func BenchmarkMulFix192(b *testing.B) {
+	a := fix192_new{123456789123456789, 12345679123456789, 12345679123456789}
+	c := fix192_new{123456789, 12345678912345689, 12345679123456789}
+	for i := 0; i < b.N; i++ {
+		_, _ = a.umul(c)
+	}
+}
+
 func BenchmarkDivUFix64(b *testing.B) {
-	a := UFix64(987654321)
-	c := UFix64(123456789)
+	a := UFix64(123456789987654321)
+	c := UFix64(123456789123456789)
 	for i := 0; i < b.N; i++ {
 		_, _ = a.Div(c)
 	}
