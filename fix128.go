@@ -394,7 +394,7 @@ func (x UFix128) Ln() (Fix128, error) {
 	// TODO: x192.ln() provides a ton of precision that we don't need, it
 	// would be ideal if we could pass an error limit to it so it could
 	// stop early when we don't need the full precision.
-	res192, err := x.toFix192().ln(prescale)
+	res192, err := x.toFix192_old().ln(prescale)
 
 	if err != nil {
 		return Fix128Zero, err
@@ -419,7 +419,7 @@ func (x Fix128) Exp() (UFix128, error) {
 	}
 
 	// Use the fix192 implementation of Exp
-	res192, err := x.toFix192().exp()
+	res192, err := x.toFix192_old().exp()
 
 	if err != nil {
 		return UFix128Zero, err
@@ -457,8 +457,8 @@ func (a UFix128) Pow(b Fix128) (UFix128, error) {
 	// Prescale the base to avoid precision loss when converting to fix192
 	a, prescale := a.prescale()
 
-	a192 := a.toFix192()
-	b192 := b.toFix192()
+	a192 := a.toFix192_old()
+	b192 := b.toFix192_old()
 
 	res192, err := a192.pow(b192, prescale)
 
@@ -486,18 +486,35 @@ func trigResult128(res192 fix192, err error) (Fix128, error) {
 	return res, nil
 }
 
+func trigResult128_old(res192 fix192_old, err error) (Fix128, error) {
+	if err != nil {
+		return Fix128Zero, err
+	}
+
+	res, err := res192.toFix128()
+
+	if err == ErrUnderflow {
+		// For trig underflows, we just return 0.
+		return Fix128Zero, nil
+	} else if err != nil {
+		return Fix128Zero, err
+	}
+
+	return res, nil
+}
+
 func (x Fix128) Sin() (Fix128, error) {
 	return trigResult128(x.toFix192().sin())
 }
 
 func (x Fix128) Cos() (Fix128, error) {
-	return trigResult128(x.toFix192().cos())
+	return trigResult128_old(x.toFix192_old().cos())
 }
 
 func (x Fix128) Tan() (Fix128, error) {
 	// Unlike with sin and cos, we want tan() to return an underflow error
 	// TODO: Do we really? :laughing:
-	res, err := x.toFix192().tan()
+	res, err := x.toFix192_old().tan()
 
 	if err != nil {
 		return Fix128Zero, err

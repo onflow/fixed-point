@@ -37,8 +37,8 @@ type ThreeArgTestCase128 struct {
 func TestDebugOneArgTestCase128(t *testing.T) {
 
 	tc := OneArgTestCase128{
-		A:        raw128{0x0000000000000000, 0x006a94d74f430001},
-		Expected: raw128{0x0000000000000000, 0x006a94d74f42fffc},
+		A:        raw128{0x0000000000001787, 0x58685d1be9070000},
+		Expected: raw128{0x000000000000177a, 0xf5932023d44270c8},
 		err:      nil,
 	}
 
@@ -49,6 +49,18 @@ func TestDebugOneArgTestCase128(t *testing.T) {
 	// res, sign := clampAngle128(a)
 	// err := error(nil)
 	// res = res.intMul(sign)
+
+	// For clampAngle on fix192
+	// a := Fix128(tc.A)
+	// a192 := a.toFix192()
+	// r192, sign := a192.clampAngle()
+	// r192 = r192.uintMul(21264757054)
+	// res128, err := r192.toFix128()
+	// var res Fix128
+
+	// if err == nil {
+	// 	res = res128.intMul(sign)
+	// }
 
 	var errorAmount raw128
 	actualResult := raw128(res)
@@ -787,6 +799,32 @@ func TestMulFix192(t *testing.T) {
 		res, err := a.Mul192(b)
 
 		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestClampFix192(t *testing.T) {
+	testState := &TestState{
+		outType:      "Fix128",
+		operation:    "Clamp",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range OneArgTestChannel128(t, testState.outType, testState.operation) {
+		a := Fix128(tc.A)
+		a192 := a.toFix192()
+		res, sign := a192.clampAngle()
+		res = res.uintMul(21264757054)
+		res128, err := res.toFix128()
+
+		if err == nil {
+			res128 = res128.intMul(sign)
+		}
+
+		OneArgResultCheck128(t, testState, tc, raw128(res128), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }

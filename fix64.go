@@ -393,7 +393,7 @@ func (x UFix64) Ln() (Fix64, error) {
 	// TODO: x192.ln() provides a ton of precision that we don't need, it
 	// would be ideal if we could pass an error limit to it so it could
 	// stop early when we don't need the full precision.
-	res192, err := x.toFix192().ln(prescale)
+	res192, err := x.toFix192_old().ln(prescale)
 
 	if err != nil {
 		return Fix64Zero, err
@@ -418,7 +418,7 @@ func (x Fix64) Exp() (UFix64, error) {
 	}
 
 	// Use the fix192 implementation of Exp
-	res192, err := x.toFix192().exp()
+	res192, err := x.toFix192_old().exp()
 
 	if err != nil {
 		return UFix64Zero, err
@@ -456,8 +456,8 @@ func (a UFix64) Pow(b Fix64) (UFix64, error) {
 	// Prescale the base to avoid precision loss when converting to fix192
 	a, prescale := a.prescale()
 
-	a192 := a.toFix192()
-	b192 := b.toFix192()
+	a192 := a.toFix192_old()
+	b192 := b.toFix192_old()
 
 	res192, err := a192.pow(b192, prescale)
 
@@ -468,7 +468,7 @@ func (a UFix64) Pow(b Fix64) (UFix64, error) {
 	return res192.toUFix64()
 }
 
-func trigResult64(res192 fix192, err error) (Fix64, error) {
+func trigResult64(res192 fix192_old, err error) (Fix64, error) {
 	if err != nil {
 		return Fix64Zero, err
 	}
@@ -486,17 +486,17 @@ func trigResult64(res192 fix192, err error) (Fix64, error) {
 }
 
 func (x Fix64) Sin() (Fix64, error) {
-	return trigResult64(x.toFix192().sin())
+	return trigResult64(x.toFix192_old().sin())
 }
 
 func (x Fix64) Cos() (Fix64, error) {
-	return trigResult64(x.toFix192().cos())
+	return trigResult64(x.toFix192_old().cos())
 }
 
 func (x Fix64) Tan() (Fix64, error) {
 	// Unlike with sin and cos, we want tan() to return an underflow error
 	// TODO: Do we really? :laughing:
-	res, err := x.toFix192().tan()
+	res, err := x.toFix192_old().tan()
 
 	if err != nil {
 		return Fix64Zero, err

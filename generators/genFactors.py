@@ -139,7 +139,7 @@ def main():
     print(f"Deadline set to {deadline} seconds.")
 
     print("Calculating best factor of 2π for UFix64")
-    maxFactor = (UFix64Max / Decimal(3.2)).quantize(1, rounding=ROUND_DOWN)
+    maxFactor = (UFix64Max / Decimal(6.28)).quantize(1, rounding=ROUND_DOWN)
     genFactorJit(maxFactor, Decimal(str(mpmath.pi)) * 2, Decimal('1e-8'))
 
     # print("Calculating best factor of ln(2) for UFix64")

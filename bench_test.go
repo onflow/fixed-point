@@ -67,8 +67,8 @@ func BenchmarkMulUFix128(b *testing.B) {
 }
 
 func BenchmarkMulFix192(b *testing.B) {
-	a := fix192_new{123456789123456789, 12345679123456789, 12345679123456789}
-	c := fix192_new{123456789, 12345678912345689, 12345679123456789}
+	a := fix192{123456789123456789, 12345679123456789, 12345679123456789}
+	c := fix192{123456789, 12345678912345689, 12345679123456789}
 	for i := 0; i < b.N; i++ {
 		_, _ = a.umul(c)
 	}
@@ -187,51 +187,5 @@ func BenchmarkCosFix128(b *testing.B) {
 	a := Fix128{123456789, 123456789}
 	for i := 0; i < b.N; i++ {
 		_, _ = a.Cos()
-	}
-}
-
-func BenchmarkChebySin(b *testing.B) {
-	a := raw128{123456789, 123456789}
-	for i := 0; i < b.N; i++ {
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
-		_, _ = mul128(a, a)
-		_, _ = add128(a, a, 0)
 	}
 }

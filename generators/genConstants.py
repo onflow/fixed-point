@@ -134,7 +134,7 @@ sinIota = (Decimal(6) * maxError) ** (Decimal(1) / Decimal(3))
 
 # We now have a list of coefficients for the Chebyshev polynomial for sin(x).
 # in the range [sinIota, pi/4], with error less than maxError.
-sinCoeffs = mp.chebyfit(mp.sin, [0, 1], 25)
+sinCoeffs = mp.chebyfit(mp.sin, [0, mp.pi/2], 30)
 # sinCoeffs = reversed(sinCoeffs)  # Reverse so that the index matches the power of x
 tanCoeffs = mp.chebyfit(mp.tan, [0, 1/8], 25)
 # tanCoeffs = reversed(tanCoeffs)  # Reverse so that the index matches the power of x
@@ -142,12 +142,14 @@ expCoeffs = mp.chebyfit(mp.exp, [0, 1], 25)
 
 def printChebyCoeff(coeffs):
     for i, coeff in enumerate(coeffs):
-        decCoeff = Decimal(str(coeff)) # * (2**20)
-        intValue = int((decCoeff * 2**128).to_integral_value(rounding=ROUND_HALF_UP))
+        decCoeff = Decimal(str(coeff))
+        # decCoeff = decCoeff * 2**20
+        intValue = int((decCoeff * 10**24 * 2**64).to_integral_value(rounding=ROUND_HALF_UP))
 
-        intString = f"0x{(intValue >> 128 & 0xffffffffffffffff):016x}"
-        fracString= f"raw128{{0x{(intValue >> 64 & 0xffffffffffffffff):016x}, 0x{(intValue & 0xffffffffffffffff):016x}}}"
-        hexString = f"{{i: {intString}, f: {fracString}}}"
+        hiString = f"0x{(intValue >> 128 & 0xffffffffffffffff):016x}"
+        midString = f"0x{(intValue >> 64 & 0xffffffffffffffff):016x}"
+        loString = f"0x{(intValue >> 0 & 0xffffffffffffffff):016x}"
+        hexString = f"{{Hi: {hiString}, Mid: {midString}, Lo: {loString}}}"
 
         print(f"    fix192{hexString}, // x^{i}")
 
@@ -285,12 +287,12 @@ def main():
     print()
     print("// The value of e^x for all integer values of x between minLn128 and maxLn128")
     print("// expressed as fix192 values.")
-    print("var expIntPowers = []fix192{")
+    print("var expIntPowers = []fix192_old{")
     for intPower in range(int(minLn128) - 1, int(maxLn128) + 1):
         expValue = Decimal(intPower).exp()
         intPart = int(expValue) # Must truncate
         fracPart = int(((expValue - intPart) * 2**128).quantize(1, rounding=ROUND_HALF_UP))
-        print(f"    fix192{{i: {intPart}, f: {go_hex128(fracPart)}}}, // e^{intPower}")
+        print(f"    fix192_old{{i: {intPart}, f: {go_hex128(fracPart)}}}, // e^{intPower}")
     print("}")
     print("const smallestExpIntPower = ", int(minLn128) - 1)
     print()
