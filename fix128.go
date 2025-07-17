@@ -389,18 +389,29 @@ func (x UFix128) prescale() (UFix128, uint64) {
 
 func (x UFix128) Ln() (Fix128, error) {
 	// Prescale to avoid precision loss when converting to fix192
-	x, prescale := x.prescale()
+	// x, prescale := x.prescale()
 
 	// TODO: x192.ln() provides a ton of precision that we don't need, it
 	// would be ideal if we could pass an error limit to it so it could
 	// stop early when we don't need the full precision.
-	res192, err := x.toFix192_old().ln(prescale)
+	res192, err := x.toFix192().ln_test()
 
 	if err != nil {
 		return Fix128Zero, err
 	}
 
-	return res192.toFix128()
+	// res192 = res192.sshiftRight(20)
+
+	res, err := res192.toFix128()
+
+	if err == ErrUnderflow {
+		// For ln underflows, we just return 0.
+		return Fix128Zero, nil
+	} else if err != nil {
+		return Fix128Zero, err
+	}
+
+	return res, nil
 }
 
 // Exp(x) returns e^x, or an error on overflow or underflow. Note that although the
@@ -419,7 +430,7 @@ func (x Fix128) Exp() (UFix128, error) {
 	}
 
 	// Use the fix192 implementation of Exp
-	res192, err := x.toFix192_old().exp()
+	res192, err := x.toFix192().exp()
 
 	if err != nil {
 		return UFix128Zero, err
@@ -454,13 +465,10 @@ func (a UFix128) Pow(b Fix128) (UFix128, error) {
 		return a, nil
 	}
 
-	// Prescale the base to avoid precision loss when converting to fix192
-	a, prescale := a.prescale()
+	a192 := a.toFix192()
+	b192 := b.toFix192()
 
-	a192 := a.toFix192_old()
-	b192 := b.toFix192_old()
-
-	res192, err := a192.pow(b192, prescale)
+	res192, err := a192.pow(b192)
 
 	if err != nil {
 		return UFix128Zero, err
@@ -508,7 +516,7 @@ func (x Fix128) Sin() (Fix128, error) {
 }
 
 func (x Fix128) Cos() (Fix128, error) {
-	return trigResult128_old(x.toFix192_old().cos())
+	return trigResult128(x.toFix192().cos())
 }
 
 func (x Fix128) Tan() (Fix128, error) {

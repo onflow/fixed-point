@@ -19,6 +19,12 @@ var raw64Zero = raw64(0)
 // - Comparison (less than, equal to, etc.)
 // - Shifting (left, right, unsigned, signed)
 // - Zero and negative checks
+//
+// NOTE: If you check the file https://github.com/golang/go/blob/master/src/cmd/compile/internal/ssagen/intrinsics.go
+// you will see that the Go compiler replaces a lot of the bits.* functions with single CPU
+// instructions on hardware that supports it. Add64, Sub64, Mul64, and LeadingZeros64 are supported
+// by intrinsics on AMD64 and ARM64 architectures, while Div64 is only support on AMD64, and uses a compiled
+// fallback on ARM.
 
 func add64(a, b raw64, c uint64) (raw64, uint64) {
 	// Use bits.Add64 to add two raw64 values and return the sum and carry.

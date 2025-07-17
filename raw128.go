@@ -86,7 +86,7 @@ func div128(hi, lo, y raw128) (quo raw128, rem raw128) {
 	remShift := uint64(bits.TrailingZeros64(uint64(y.Lo)))
 
 	if remShift != 0 {
-		// If the denominator has trailing zeros, we can both the numerator and denominator
+		// If the denominator has trailing zeros, we can shift both the numerator and denominator
 		// by the same amount to potentially reduce the size of the numbers involved (in particular,
 		// this could turn the denominator into a 64-bit value or the numerator into a 192-bit value,
 		// either of which is much cheaper to compute).

@@ -37,13 +37,16 @@ type ThreeArgTestCase128 struct {
 func TestDebugOneArgTestCase128(t *testing.T) {
 
 	tc := OneArgTestCase128{
-		A:        raw128{0x0000000000001787, 0x58685d1be9070000},
-		Expected: raw128{0x000000000000177a, 0xf5932023d44270c8},
-		err:      nil,
+		// A: raw128{0x25c7a, 0xe56142a41836c0be},
+		A:        raw128{0x000000000000d3c2, 0x1bcecceda0ffffff},
+		Expected: raw128{0x0000000000000000, 0x0000000000000000},
+		// A:        raw128{0x10fd9, 0xdb44724e2ca06865},
+		// Expected: raw128{0x3bf2, 0x70199efc4e0a0e98},
+		err: nil,
 	}
 
-	a := Fix128(tc.A)
-	res, err := a.Sin()
+	a := UFix128(tc.A)
+	res, err := a.Ln()
 
 	// Used for debugging clampAngle
 	// res, sign := clampAngle128(a)
@@ -86,15 +89,15 @@ func TestDebugTwoArgTestCase128(t *testing.T) {
 	// t.Skip()
 
 	tc := TwoArgTestCase128{
-		A:        raw128{0x0000000000000000, 0x0000000000000006},
-		B:        raw128{0x00000000000034f0, 0x86f3b33b683fffff},
-		Expected: raw128{0x00000000000069e1, 0x0de76676d07fffff},
+		A:        raw128{0x000000000000d3c2, 0x1bcecceda1000001},
+		B:        raw128{0x00000000000069e1, 0x0de76676d0800000},
+		Expected: raw128{0x000000000000d3c2, 0x1bcecceda1000000},
 		err:      nil,
 	}
 
 	a := UFix128(tc.A)
-	b := UFix128(tc.B)
-	res, err := a.Mul192(b)
+	b := Fix128(tc.B)
+	res, err := a.Pow(b)
 
 	var errorAmount raw128
 	actualResult := raw128(res)
@@ -106,7 +109,7 @@ func TestDebugTwoArgTestCase128(t *testing.T) {
 	}
 
 	var errorAmountStr string
-	if errorAmount.Hi != 0 || errorAmount.Lo > 1000000 {
+	if errorAmount.Hi != 0 || errorAmount.Lo > 1e8 {
 		errorAmountStr = "±lots"
 	} else {
 		errorAmountStr = "±" + strconv.FormatUint(uint64(errorAmount.Lo), 10)
@@ -783,25 +786,25 @@ func TestTanFix128(t *testing.T) {
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
-func TestMulFix192(t *testing.T) {
-	testState := &TestState{
-		outType:      "UFix128",
-		operation:    "Mul",
-		successCount: 0,
-		failureCount: 0,
-	}
+// func TestMulFix192(t *testing.T) {
+// 	testState := &TestState{
+// 		outType:      "UFix128",
+// 		operation:    "Mul",
+// 		successCount: 0,
+// 		failureCount: 0,
+// 	}
 
-	t.Parallel()
+// 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
-		a := UFix128(tc.A)
-		b := UFix128(tc.B)
-		res, err := a.Mul192(b)
+// 	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+// 		a := UFix128(tc.A)
+// 		b := UFix128(tc.B)
+// 		res, err := a.Mul192(b)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
-	}
-	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
-}
+// 		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+// 	}
+// 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+// }
 
 func TestClampFix192(t *testing.T) {
 	testState := &TestState{

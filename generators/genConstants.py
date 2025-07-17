@@ -132,18 +132,61 @@ sinIota = (Decimal(6) * maxError) ** (Decimal(1) / Decimal(3))
 #     if error < mp.mpf(str(maxError)):
 #         break
 
+
+def chebyFitWithOverflowCheck(func, bounds, degree):
+    """ Compute a Chebyshev polynomial fit for a function, checking for overflow at the end of the range. """
+    coeffs = mp.chebyfit(func, bounds, degree)
+    coeffs = [x * 2**20 for x in coeffs]  # Scale coefficients
+
+    accum = 0
+    testX = bounds[1]  # Use the upper bound for the overflow check
+    upperBound = mp.mpf(str(Fix128Max))
+    lowerBound = mp.mpf(str(Fix128Min))
+
+    for i, coeff in enumerate(coeffs):
+        # Check if the coefficient is too large to fit in a Fix128 (which is essentially the same range as Fix192).
+        if coeff > upperBound or coeff < lowerBound:
+            raise ValueError(f"Coefficient {coeff} for x^{len(coeffs) - i - 1} outside of Fix128 range")
+        
+        prod = accum * testX
+        if prod > upperBound or prod < lowerBound:
+            raise ValueError(f"Overflow in Chebyshev polynomial evaluation at x={testX} for degree {degree}")
+        
+        accum = prod + coeff
+        if accum > upperBound or accum < lowerBound:
+            raise ValueError(f"Overflow in Chebyshev polynomial evaluation at x={testX} for degree {degree}")
+    
+    return coeffs
+
+
 # We now have a list of coefficients for the Chebyshev polynomial for sin(x).
 # in the range [sinIota, pi/4], with error less than maxError.
-sinCoeffs = mp.chebyfit(mp.sin, [0, mp.pi/2], 30)
+sinCoeffs = chebyFitWithOverflowCheck(mp.sin, [0, mp.pi/2], 30)
 # sinCoeffs = reversed(sinCoeffs)  # Reverse so that the index matches the power of x
-tanCoeffs = mp.chebyfit(mp.tan, [0, 1/8], 25)
+tanCoeffs = chebyFitWithOverflowCheck(mp.tan, [0, 1/8], 25)
 # tanCoeffs = reversed(tanCoeffs)  # Reverse so that the index matches the power of x
-expCoeffs = mp.chebyfit(mp.exp, [0, 1], 25)
+expCoeffs = chebyFitWithOverflowCheck(mp.exp, [0, 1], 28)
+
+# lnBounds = mp.mpf(2**79) / mp.mpf(10**24)
+# lnCoeffs = chebyFitWithOverflowCheck(mp.ln, [lnBounds, lnBounds * 2], 50)
+# lnBounds = mp.mpf(2**80) / mp.mpf(10**24)
+# lnCoeffs = mp.chebyfit(lambda x: mp.ln(x) * 2**20, [lnBounds, lnBounds * 2], 50)
+lnLowerBound = mp.mpf(2**79) / mp.mpf(10**24)
+scaleFactor = 1.0443 # Slightly more than 2 ** (1/16)
+lnCoeffs = []
+lnBounds = []
+
+for i in range(16):
+    lnBounds.append(lnLowerBound * (scaleFactor ** i))
+    lnCoeffs.append(chebyFitWithOverflowCheck(mp.ln, [lnLowerBound * (scaleFactor ** i), lnLowerBound * (scaleFactor ** (i+1))], 22))
+
+lnBounds.append(lnLowerBound * (scaleFactor ** 16))  # Add the last bound
+lnBounds = [Decimal(str(b)) for b in lnBounds] # Convert bounds to Decimal for output
 
 def printChebyCoeff(coeffs):
     for i, coeff in enumerate(coeffs):
         decCoeff = Decimal(str(coeff))
-        # decCoeff = decCoeff * 2**20
+
         intValue = int((decCoeff * 10**24 * 2**64).to_integral_value(rounding=ROUND_HALF_UP))
 
         hiString = f"0x{(intValue >> 128 & 0xffffffffffffffff):016x}"
@@ -151,7 +194,7 @@ def printChebyCoeff(coeffs):
         loString = f"0x{(intValue >> 0 & 0xffffffffffffffff):016x}"
         hexString = f"{{Hi: {hiString}, Mid: {midString}, Lo: {loString}}}"
 
-        print(f"    fix192{hexString}, // x^{i}")
+        print(f"    fix192{hexString}, // x^{len(coeffs) - i - 1}")
 
 
 # Output Go code
@@ -287,12 +330,16 @@ def main():
     print()
     print("// The value of e^x for all integer values of x between minLn128 and maxLn128")
     print("// expressed as fix192 values.")
-    print("var expIntPowers = []fix192_old{")
+    print("var expIntPowers = []fix192{")
     for intPower in range(int(minLn128) - 1, int(maxLn128) + 1):
         expValue = Decimal(intPower).exp()
-        intPart = int(expValue) # Must truncate
-        fracPart = int(((expValue - intPart) * 2**128).quantize(1, rounding=ROUND_HALF_UP))
-        print(f"    fix192_old{{i: {intPart}, f: {go_hex128(fracPart)}}}, // e^{intPower}")
+        intValue = int((expValue * Decimal(10**24) * Decimal(2**64)).to_integral_value(rounding=ROUND_HALF_UP))
+        hiString = f"0x{(intValue >> 128 & 0xffffffffffffffff):016x}"
+        midString = f"0x{(intValue >> 64 & 0xffffffffffffffff):016x}"
+        loString = f"0x{(intValue >> 0 & 0xffffffffffffffff):016x}"
+        hexString = f"{{Hi: {hiString}, Mid: {midString}, Lo: {loString}}}"
+
+        print(f"    fix192{hexString}, // e^{intPower} = {expValue:.30f}")
     print("}")
     print("const smallestExpIntPower = ", int(minLn128) - 1)
     print()
@@ -312,6 +359,26 @@ def main():
     print("// Chebyshev coefficients for exp(x) in the range [0, 1]")
     print("var expChebyCoeffs = []fix192{")
     printChebyCoeff(expCoeffs)
+    print("}")
+    print()
+    print("// Ranges for ln(x) polynomial coefficients")
+    print("var lnBounds = []fix192{")
+    for bound in lnBounds:
+        intValue = int((bound * Decimal(10**24) * Decimal(2**64)).to_integral_value(rounding=ROUND_HALF_UP))
+        hiString = f"0x{(intValue >> 128 & 0xffffffffffffffff):016x}"
+        midString = f"0x{(intValue >> 64 & 0xffffffffffffffff):016x}"
+        loString = f"0x{(intValue >> 0 & 0xffffffffffffffff):016x}"
+        hexString = f"{{Hi: {hiString}, Mid: {midString}, Lo: {loString}}}"
+        print(f"    fix192{hexString}, // {bound:.30f}")
+    print("}")
+    print()
+    print(f"// Chebyshev coefficients for ln(x) in the range [{lnBounds[0]:.3f}, {lnBounds[-1]:.3f}]")
+    print(f"var lnChebyCoeffs = [{len(lnCoeffs)}][]fix192{{")
+    for i in range(len(lnCoeffs)):
+        print(f"    // Coefficients for ln(x) in the range [{lnBounds[i]:.3f}, {lnBounds[i+1]:.3f}]")
+        print("    {")
+        printChebyCoeff(lnCoeffs[i])
+        print("    },")
     print("}")
     print()
 
