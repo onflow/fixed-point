@@ -144,7 +144,7 @@ func (a fix192) pow(b fix192) (fix192, error) {
 		return fix192{}, err
 	}
 
-	prod = prod.sshiftRightWithRounding(20)
+	// prod = prod.sshiftRightWithRounding(20)
 
 	return prod.exp()
 }
@@ -250,7 +250,7 @@ func (x fix192) ln_test2() (fix192, error) {
 	// did above. Note that k*ln2 must strictly lie between minLn and maxLn constants
 	// and we chose ln2Multiple and ln2Factor so they can't overflow when multiplied
 	// by values in that range.
-	ln2_192 := fix192{0x92c7957dc, 0xc1d0e60ef101f17e, 0x2103111cbb2948f5}
+	ln2_192 := fix192{0x92c7, 0x957dcc1d0e60ef10, 0x1f17e2103111cbb2}
 
 	powerCorrection := ln2_192.intMul(k)
 
@@ -430,6 +430,92 @@ func (x fix192) cos() (fix192, error) {
 	return res.applySign(sign)
 }
 
+// func (accum fix192) chebyMul(x fix192) fix192 {
+// 	a, aSign := accum.abs()
+
+// 	var res fix192
+// 	var carry1, carry2 uint64
+// 	var r1, r2, r3 fix192
+// 	var xhi raw64
+// 	var round1, round2 raw64
+
+// 	r1.Mid, r1.Lo, round1, _ = mul192by64_new(a, x.Lo)
+
+// 	// midHi, _ := mul64(a.Mid, x.Lo)
+// 	// hiHi, hiLo := mul64(a.Hi, x.Lo)
+
+// 	// r1.Lo, carry1 = add64(midHi, hiLo, 0)
+// 	// r1.Mid, _ = add64(hiHi, raw64Zero, carry1)
+
+// 	r2.Hi, r2.Mid, r2.Lo, round2 = mul192by64_new(a, x.Mid)
+// 	xhi, r3.Hi, r3.Mid, r3.Lo = mul192by64_new(a, x.Hi)
+
+// 	_, carry1 = add64(round1, round2, 0)
+
+// 	res, carry1 = add192(r1, r2, carry1)
+// 	res, carry2 = add192(res, r3, 0)
+// 	xhi, _ = add64(xhi, raw64(carry1), carry2)
+
+// 	if uint64(xhi) >= (1 << 0) {
+// 		panic("xhi overflowed in chebyMul")
+// 	}
+
+// 	// res = res.ushiftRight(54)
+// 	// res.Hi |= xhi << 10
+
+// 	res, err := res.applySign(aSign)
+
+// 	if err != nil {
+// 		panic("chebyMul: " + err.Error())
+// 	}
+
+// 	return res
+// }
+
+func (x fix192) sshiftRightWithRounding(bits uint64) fix192 {
+	// We start by adding 0.5 (or -0.5, in the case of negative numbers) to the
+	// value before shifting. This will ensure that the result is rounded
+	// correctly when we shift right.
+	signSmear := sshiftRight64(x.Hi, 63) // All 1s when x is negative, all 0s when x is positive.
+	roundingValue := fix192{signSmear, signSmear, (signSmear | 1) << (bits - 1)}
+	res := x.add(roundingValue).sshiftRight(bits)
+
+	return res
+}
+
+// func (x fix192) chebyPoly(coeffs []fix192) fix192 {
+// 	// Compute the Chebyshev polynomial using Horner's method.
+// 	accum := coeffs[0]
+
+// 	// x = x.shiftLeft(30)
+// 	// xPrescaled, _ := div256by64(x.Hi, x.Mid, x.Lo, 0, raw64(0xd3c21bcecceda1))
+
+// 	for i := 1; i < len(coeffs); i++ {
+// 		accum = accum.chebyMul(x)
+// 		accum = accum.add(coeffs[i])
+// 	}
+
+// 	return accum
+// }
+
+// func (x fix192) sin() (fix192, error) {
+// 	clampedX, sign := x.clampAngle()
+
+// 	halfPi192 := fix192{0x14ca1, 0x0a1cd055eb965859, 0xb10f4d810eb09a8d}
+// 	pi192 := fix192{0x29942, 0x1439a0abd72cb0b3, 0x621e9b021d61351a}
+// 	// twoPi192 := fix192{0x53284, 0x28734157ae596166, 0xc43d36043ac26a35}
+
+// 	// Leverage the identity sin(x) = sin(π - x) to keep the input angle in the range [0, π/2]
+// 	if halfPi192.ult(clampedX) {
+// 		clampedX = pi192.sub(clampedX)
+// 	}
+
+// 	res := clampedX.chebyPoly(sinChebyCoeffs)
+// 	// res = res.sshiftRightWithRounding(20)
+
+// 	return res.applySign(sign)
+// }
+
 func (accum fix192) chebyMul(x fix192) fix192 {
 	a, aSign := accum.abs()
 
@@ -456,12 +542,12 @@ func (accum fix192) chebyMul(x fix192) fix192 {
 	res, carry2 = add192(res, r3, 0)
 	xhi, _ = add64(xhi, raw64(carry1), carry2)
 
-	if uint64(xhi) >= (1 << 54) {
+	if uint64(xhi) >= (1 << 48) {
 		panic("xhi overflowed in chebyMul")
 	}
 
-	res = res.ushiftRight(54)
-	res.Hi |= xhi << 10
+	res = res.ushiftRight(16)
+	res.Hi |= xhi << 48
 
 	res, err := res.applySign(aSign)
 
@@ -472,26 +558,15 @@ func (accum fix192) chebyMul(x fix192) fix192 {
 	return res
 }
 
-func (x fix192) sshiftRightWithRounding(bits uint64) fix192 {
-	// We start by adding 0.5 (or -0.5, in the case of negative numbers) to the
-	// value before shifting. This will ensure that the result is rounded
-	// correctly when we shift right.
-	signSmear := sshiftRight64(x.Hi, 63) // All 1s when x is negative, all 0s when x is positive.
-	roundingValue := fix192{signSmear, signSmear, (signSmear | 1) << (bits - 1)}
-	res := x.add(roundingValue).sshiftRight(bits)
-
-	return res
-}
-
 func (x fix192) chebyPoly(coeffs []fix192) fix192 {
 	// Compute the Chebyshev polynomial using Horner's method.
 	accum := coeffs[0]
 
-	x = x.shiftLeft(30)
-	xPrescaled, _ := div256by64(x.Hi, x.Mid, x.Lo, 0, raw64(0xd3c21bcecceda1))
+	// x = x.shiftLeft(30)
+	// xPrescaled, _ := div256by64(x.Hi, x.Mid, x.Lo, 0, raw64(0xd3c21bcecceda1))
 
 	for i := 1; i < len(coeffs); i++ {
-		accum = accum.chebyMul(xPrescaled)
+		accum = accum.chebyMul(x)
 		accum = accum.add(coeffs[i])
 	}
 
@@ -511,7 +586,7 @@ func (x fix192) sin() (fix192, error) {
 	}
 
 	res := clampedX.chebyPoly(sinChebyCoeffs)
-	res = res.sshiftRightWithRounding(20)
+	// res = res.sshiftRightWithRounding(20)
 
 	return res.applySign(sign)
 }

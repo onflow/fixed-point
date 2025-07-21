@@ -135,27 +135,60 @@ sinIota = (Decimal(6) * maxError) ** (Decimal(1) / Decimal(3))
 
 def chebyFitWithOverflowCheck(func, bounds, degree):
     """ Compute a Chebyshev polynomial fit for a function, checking for overflow at the end of the range. """
-    coeffs = mp.chebyfit(func, bounds, degree)
-    coeffs = [x * 2**20 for x in coeffs]  # Scale coefficients
 
-    accum = 0
-    testX = bounds[1]  # Use the upper bound for the overflow check
-    upperBound = mp.mpf(str(Fix128Max))
-    lowerBound = mp.mpf(str(Fix128Min))
+    scaleIn = mp.mpf(10**24) * mp.mpf(2**64)
+    scaleOut = mp.mpf(10**24) * mp.mpf(2**64)
+    mulScale = mp.mpf(2**144)
+    scaledBounds = [x * scaleIn for x in bounds]
+    wrappedFunc = lambda x: func(x/scaleIn) * scaleOut
+    (coeffs, err) = mp.chebyfit(wrappedFunc, scaledBounds, degree, error=True)
+
+    if err > 1:
+        raise ValueError(f"Chebyshev fit error {err} exceeds maximum allowed error for degree {degree}")
+
+    degrees = list(range(len(coeffs)))
+    degrees.reverse()
+    coeffs = [x * (mulScale ** i) for i, x in zip(degrees, coeffs)]
+
+    minA, maxA = 0, 0
+    minX = scaledBounds[0]
+    maxX = scaledBounds[1]
+    upperBound = mp.mpf(2**191) - 1
+    lowerBound = mp.mpf(-2**191)
 
     for i, coeff in enumerate(coeffs):
         # Check if the coefficient is too large to fit in a Fix128 (which is essentially the same range as Fix192).
         if coeff > upperBound or coeff < lowerBound:
             raise ValueError(f"Coefficient {coeff} for x^{len(coeffs) - i - 1} outside of Fix128 range")
         
-        prod = accum * testX
+        prod = minA * minX / mulScale
         if prod > upperBound or prod < lowerBound:
-            raise ValueError(f"Overflow in Chebyshev polynomial evaluation at x={testX} for degree {degree}")
+            raise ValueError(f"Overflow in Chebyshev polynomial evaluation at x={minX} for degree {degree}")
         
-        accum = prod + coeff
-        if accum > upperBound or accum < lowerBound:
-            raise ValueError(f"Overflow in Chebyshev polynomial evaluation at x={testX} for degree {degree}")
-    
+        minA = prod + coeff
+        if minA > upperBound or minA < lowerBound:
+            raise ValueError(f"Overflow in Chebyshev polynomial evaluation at x={minX} for degree {degree}")
+
+        prod = maxA * maxX / mulScale
+        if prod > upperBound or prod < lowerBound:
+            raise ValueError(f"Overflow in Chebyshev polynomial evaluation at x={maxX} for degree {degree}")
+        
+        maxA = prod + coeff
+        if maxA > upperBound or maxA < lowerBound:
+            raise ValueError(f"Overflow in Chebyshev polynomial evaluation at x={maxX} for degree {degree}")
+
+
+    realResultMin = func(bounds[0]) * scaleOut
+
+    if abs(realResultMin - minA) > 1:
+        raise ValueError(f"Chebyshev polynomial evaluation at x={bounds[0]} for degree {degree} does not meet error bound: ±{abs(realResultMin - minA)}")
+
+
+    realResultMax = func(bounds[1]) * scaleOut
+
+    if abs(realResultMax - maxA) > 1:
+        raise ValueError(f"Chebyshev polynomial evaluation at x={bounds[1]} for degree {degree} does not meet error bound: ±{abs(realResultMax - maxA)}")
+
     return coeffs
 
 
@@ -163,7 +196,7 @@ def chebyFitWithOverflowCheck(func, bounds, degree):
 # in the range [sinIota, pi/4], with error less than maxError.
 sinCoeffs = chebyFitWithOverflowCheck(mp.sin, [0, mp.pi/2], 30)
 # sinCoeffs = reversed(sinCoeffs)  # Reverse so that the index matches the power of x
-tanCoeffs = chebyFitWithOverflowCheck(mp.tan, [0, 1/8], 25)
+tanCoeffs = chebyFitWithOverflowCheck(mp.tan, [0, 1/8], 26)
 # tanCoeffs = reversed(tanCoeffs)  # Reverse so that the index matches the power of x
 expCoeffs = chebyFitWithOverflowCheck(mp.exp, [0, 1], 28)
 
@@ -187,7 +220,7 @@ def printChebyCoeff(coeffs):
     for i, coeff in enumerate(coeffs):
         decCoeff = Decimal(str(coeff))
 
-        intValue = int((decCoeff * 10**24 * 2**64).to_integral_value(rounding=ROUND_HALF_UP))
+        intValue = int(decCoeff.to_integral_value(rounding=ROUND_HALF_UP))
 
         hiString = f"0x{(intValue >> 128 & 0xffffffffffffffff):016x}"
         midString = f"0x{(intValue >> 64 & 0xffffffffffffffff):016x}"

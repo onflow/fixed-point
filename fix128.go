@@ -394,7 +394,7 @@ func (x UFix128) Ln() (Fix128, error) {
 	// TODO: x192.ln() provides a ton of precision that we don't need, it
 	// would be ideal if we could pass an error limit to it so it could
 	// stop early when we don't need the full precision.
-	res192, err := x.toFix192().ln_test()
+	res192, err := x.toFix192().ln_test2()
 
 	if err != nil {
 		return Fix128Zero, err

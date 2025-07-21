@@ -38,15 +38,15 @@ func TestDebugOneArgTestCase128(t *testing.T) {
 
 	tc := OneArgTestCase128{
 		// A: raw128{0x25c7a, 0xe56142a41836c0be},
-		A:        raw128{0x000000000000d3c2, 0x1bcecceda0ffffff},
-		Expected: raw128{0x0000000000000000, 0x0000000000000000},
+		A:        raw128{0x0000000000000000, 0x0000000000000001},
+		Expected: raw128{0x0000000000000000, 0x0000000000000001},
 		// A:        raw128{0x10fd9, 0xdb44724e2ca06865},
 		// Expected: raw128{0x3bf2, 0x70199efc4e0a0e98},
 		err: nil,
 	}
 
-	a := UFix128(tc.A)
-	res, err := a.Ln()
+	a := Fix128(tc.A)
+	res, err := a.Sin()
 
 	// Used for debugging clampAngle
 	// res, sign := clampAngle128(a)
