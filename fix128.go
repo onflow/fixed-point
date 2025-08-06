@@ -8,6 +8,13 @@ package fixedPoint
 // the fix64.go file, they should be fixed there first, and then this file should
 // be regenerated.
 
+func NewFix128(hi, lo uint64) Fix128 {
+	return Fix128{
+		Hi: raw64(hi),
+		Lo: raw64(lo),
+	}
+}
+
 // == Comparison Operators ==
 
 // Eq returns true if a and b are equal.
