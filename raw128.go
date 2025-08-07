@@ -149,6 +149,16 @@ func div128(hi, lo, y raw128) (quo raw128, rem raw128) {
 	return quo, rem
 }
 
+func mod128(a, b raw128) raw128 {
+	// Compute the modulus of two raw128 values, treating them as unsigned integers.
+	if isZero128(b) {
+		panic("mod128: division by zero")
+	}
+
+	_, rem := div128(raw128Zero, a, b)
+	return rem
+}
+
 func neg128(a raw128) raw128 {
 	// Negate a raw128 value
 	negLo, borrow := sub64(0, a.Lo, 0)

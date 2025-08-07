@@ -628,6 +628,46 @@ func TestFMDFix128(t *testing.T) {
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
+func TestModUFix128(t *testing.T) {
+	testState := &TestState{
+		outType:      "UFix128",
+		operation:    "Mod",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+		a := UFix128(tc.A)
+		b := UFix128(tc.B)
+		res, err := a.Mod(b)
+
+		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestModFix128(t *testing.T) {
+	testState := &TestState{
+		outType:      "Fix128",
+		operation:    "Mod",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+		a := Fix128(tc.A)
+		b := Fix128(tc.B)
+		res, err := a.Mod(b)
+
+		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
 func TestSqrtUFix128(t *testing.T) {
 	testState := &TestState{
 		outType:      "UFix128",

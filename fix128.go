@@ -47,26 +47,6 @@ func (a Fix128) Neg() (Fix128, error) {
 func (a UFix128) IsZero() bool { return isZero128(raw128(a)) }
 func (a Fix128) IsZero() bool  { return isZero128(raw128(a)) }
 
-// These methods DO NOT check for overflow or underflow, so we keep them internal; they
-// save time and error checking when we are doing computations with known bounds
-// (i.e. in our transcendental functions).
-
-// intMul multiplies a by b *without* checking for overflow or underflow.
-// func (a UFix128) intMul(b uint64) UFix128 { return UFix128(uintMul128(raw128(a), b)) }
-// func (a Fix128) intMul(b int64) Fix128    { return Fix128(sintMul128(raw128(a), b)) }
-
-// // intDiv divides a by b *without* checking for overflow or underflow.
-// func (a UFix128) intDiv(b uint64) UFix128 { return UFix128(uintDiv128(raw128(a), b)) }
-// func (a Fix128) intDiv(b int64) Fix128    { return Fix128(sintDiv128(raw128(a), b)) }
-
-// // shiftLeft shifts a left by n bits *without* checking for overflow.
-// func (a UFix128) shiftLeft(n uint64) UFix128 { return UFix128(shiftLeft128(raw128(a), n)) }
-// func (a Fix128) shiftLeft(n uint64) Fix128   { return Fix128(shiftLeft128(raw128(a), n)) }
-
-// // shiftRight shifts a right by n bits *without* checking for underflow.
-// func (a UFix128) shiftRight(n uint64) UFix128 { return UFix128(ushiftRight128(raw128(a), n)) }
-// func (a Fix128) shiftRight(n uint64) Fix128   { return Fix128(sshiftRight128(raw128(a), n)) }
-
 // == Arithmetic Operators ==
 
 // Add returns the sum of a and b, or an error on overflow.
@@ -263,6 +243,36 @@ func (a Fix128) FMD(b, c Fix128) (Fix128, error) {
 	return res.ApplySign(sign)
 }
 
+// Returns the remainder of a divided by b, or an error on division by zero.
+func (a UFix128) Mod(b UFix128) (UFix128, error) {
+	if b.IsZero() {
+		return UFix128Zero, ErrDivByZero
+	}
+
+	rem := mod128(raw128(a), raw128(b))
+
+	return UFix128(rem), nil
+}
+
+// Returns the remainder of a divided by b, the result matches the sign of a (as per Go's %
+// operator).
+func (a Fix128) Mod(b Fix128) (Fix128, error) {
+	if b.IsZero() {
+		return Fix128Zero, ErrDivByZero
+	}
+
+	aUnsigned, aSign := a.Abs()
+	bUnsigned, _ := b.Abs()
+
+	rem, err := aUnsigned.Mod(bUnsigned)
+
+	if err != nil {
+		return Fix128Zero, err
+	}
+
+	return rem.ApplySign(aSign)
+}
+
 // Sqrt returns the square root of x using Newton-Rhaphson. Note that this
 // method returns an error result for consistency with other methods,
 // but can't actually ever fail...
@@ -375,6 +385,7 @@ func (x UFix128) Ln() (Fix128, error) {
 
 	res, err := res192.toFix128()
 
+	// TODO: Should this catch underflow?
 	if err == ErrUnderflow {
 		// For ln underflows, we just return 0.
 		return Fix128Zero, nil

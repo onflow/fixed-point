@@ -46,26 +46,6 @@ func (a Fix64) Neg() (Fix64, error) {
 func (a UFix64) IsZero() bool { return isZero64(raw64(a)) }
 func (a Fix64) IsZero() bool  { return isZero64(raw64(a)) }
 
-// These methods DO NOT check for overflow or underflow, so we keep them internal; they
-// save time and error checking when we are doing computations with known bounds
-// (i.e. in our transcendental functions).
-
-// intMul multiplies a by b *without* checking for overflow or underflow.
-func (a UFix64) intMul(b uint64) UFix64 { return UFix64(uintMul64(raw64(a), b)) }
-func (a Fix64) intMul(b int64) Fix64    { return Fix64(sintMul64(raw64(a), b)) }
-
-// intDiv divides a by b *without* checking for overflow or underflow.
-func (a UFix64) intDiv(b uint64) UFix64 { return UFix64(uintDiv64(raw64(a), b)) }
-func (a Fix64) intDiv(b int64) Fix64    { return Fix64(sintDiv64(raw64(a), b)) }
-
-// shiftLeft shifts a left by n bits *without* checking for overflow.
-func (a UFix64) shiftLeft(n uint64) UFix64 { return UFix64(shiftLeft64(raw64(a), n)) }
-func (a Fix64) shiftLeft(n uint64) Fix64   { return Fix64(shiftLeft64(raw64(a), n)) }
-
-// shiftRight shifts a right by n bits *without* checking for underflow.
-func (a UFix64) shiftRight(n uint64) UFix64 { return UFix64(ushiftRight64(raw64(a), n)) }
-func (a Fix64) shiftRight(n uint64) Fix64   { return Fix64(sshiftRight64(raw64(a), n)) }
-
 // == Arithmetic Operators ==
 
 // Add returns the sum of a and b, or an error on overflow.
@@ -260,6 +240,36 @@ func (a Fix64) FMD(b, c Fix64) (Fix64, error) {
 	}
 
 	return res.ApplySign(sign)
+}
+
+// Returns the remainder of a divided by b, or an error on division by zero.
+func (a UFix64) Mod(b UFix64) (UFix64, error) {
+	if b.IsZero() {
+		return UFix64Zero, ErrDivByZero
+	}
+
+	rem := mod64(raw64(a), raw64(b))
+
+	return UFix64(rem), nil
+}
+
+// Returns the remainder of a divided by b, the result matches the sign of a (as per Go's %
+// operator).
+func (a Fix64) Mod(b Fix64) (Fix64, error) {
+	if b.IsZero() {
+		return Fix64Zero, ErrDivByZero
+	}
+
+	aUnsigned, aSign := a.Abs()
+	bUnsigned, _ := b.Abs()
+
+	rem, err := aUnsigned.Mod(bUnsigned)
+
+	if err != nil {
+		return Fix64Zero, err
+	}
+
+	return rem.ApplySign(aSign)
 }
 
 // Sqrt returns the square root of x using Newton-Rhaphson. Note that this
