@@ -1,36 +1,32 @@
 from decimal import *
 import mpmath
 
-getcontext().prec = 50
-mpmath.mp.dps = 50
+getcontext().prec = 100
+mpmath.mp.dps = 100
 
-decPi = Decimal(str(mpmath.pi))  # Pi to 50 decimal places
+twoPi = Decimal(str(mpmath.pi * 2))  # 2π to 100 decimal places
 
-# We scale the residual by a large multiplier so we can do the primary loop using integer arithmetic.
-decimalMultiplier = Decimal(1e20)
+minFactor = Decimal(0x7fffffffffffffff) / Decimal(5**24) / twoPi
+minFactor = int(minFactor.quantize(Decimal('1'), rounding=ROUND_UP))
 
-def printSmallestErrors(scaleFactor, maxIterations=10000000):
-    scaleFactor = Decimal(scaleFactor)
+maxFactor = Decimal(0xffffffffffffffff) / Decimal(5**24) / twoPi
+maxFactor = int(maxFactor.quantize(Decimal('1'), rounding=ROUND_DOWN))
 
-    scaled2Pi = decPi * 2 * scaleFactor
-    truncated2Pi = int(scaled2Pi)
+bestFactor = None
+bestError = Decimal(1)
 
-    # Turn that all into an integer so we can do the primary loop using integer arithmetic.
-    baseTerm = int((scaled2Pi - truncated2Pi) * decimalMultiplier)
+for i in range(minFactor, maxFactor + 1):
+    currentMultiplier = Decimal(i) * 5**24
+    scaled2Pi = twoPi * currentMultiplier
+    truncated2Pi = int(scaled2Pi.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
-    currentTerm = 0
-    smallestErr = baseTerm + 1
+    estTwoPi = Decimal(truncated2Pi) / currentMultiplier
+    err = abs(estTwoPi - twoPi)
 
-    for multiplier in range(1, maxIterations):
-        # print(f"Multiplier: {multiplier}, Current Error: {currentErr}")
-        currentTerm = (currentTerm + baseTerm) % decimalMultiplier
-        currentErr = min(currentTerm, decimalMultiplier - currentTerm)
-        if currentErr < smallestErr:
-            smallestErr = currentErr
-            print(f"New smallest err: {Decimal(smallestErr) / decimalMultiplier / scaleFactor} (multiplier: {multiplier})")
+    if err < bestError:
+        bestError = err
+        bestFactor = i
 
-print("Smallest errors for Fix64:")
-printSmallestErrors(10**8) #, maxIterations=92233720368)
+print(f"Best factor: {bestFactor}, Error: {bestError:0.3g}")
 
-print("\nSmallest errors for fix64_extra:")
-printSmallestErrors(Decimal(10**8 * 2**12))  # This is the scale factor used in fix64_extra
+

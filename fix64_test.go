@@ -48,6 +48,20 @@ type TestState struct {
 	failureCount int
 }
 
+func TestRounding64(t *testing.T) {
+	a := UFix64(10 * Fix64Scale)
+	b := UFix64(11 * Fix64Scale)
+
+	res, err := a.Div(b)
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if res != UFix64(90909091) {
+		t.Fatalf("Expected 90909091, got %v", res)
+	}
+}
+
 // A useful function to debug a specific test case. You can just copy/paste the test case values
 // from a failing test's log output into this function and then debug it.
 func TestDebugOneArgTestCase64(t *testing.T) {
@@ -59,7 +73,7 @@ func TestDebugOneArgTestCase64(t *testing.T) {
 	}
 
 	a := Fix64(tc.A)
-	res, err := a.Tan()
+	res, err := a.Cos()
 
 	// Used for debugging clampAngle
 	// temp, sign := clampAngle64Test(a)
@@ -728,25 +742,6 @@ func TestCosFix64(t *testing.T) {
 	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
 		res, err := a.Cos()
-
-		OneArgResultCheck64(t, testState, tc, uint64(res), err)
-	}
-	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
-}
-
-func TestTanFix64(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix64",
-		operation:    "Tan",
-		successCount: 0,
-		failureCount: 0,
-	}
-
-	t.Parallel()
-
-	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
-		a := Fix64(tc.A)
-		res, err := a.Tan()
 
 		OneArgResultCheck64(t, testState, tc, uint64(res), err)
 	}
