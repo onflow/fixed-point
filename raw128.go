@@ -36,9 +36,11 @@ func mul128(a, b raw128) (hi, lo raw128) {
 	// If either operand fits into 64 bits, we can use a simpler multiplication.
 	// This also handles the case where one of the operands is zero.
 	if a.Hi == 0 {
-		return mul128By64(b, a.Lo)
+		hi.Lo, lo.Hi, lo.Lo = mul128By64(b, a.Lo)
+		return
 	} else if b.Hi == 0 {
-		return mul128By64(a, b.Lo)
+		hi.Lo, lo.Hi, lo.Lo = mul128By64(a, b.Lo)
+		return
 	}
 
 	// Observe that:
@@ -147,30 +149,21 @@ func div128(hi, lo, y raw128) (quo raw128, rem raw128) {
 	return quo, rem
 }
 
+func mod128(a, b raw128) raw128 {
+	// Compute the modulus of two raw128 values, treating them as unsigned integers.
+	if isZero128(b) {
+		panic("mod128: division by zero")
+	}
+
+	_, rem := div128(raw128Zero, a, b)
+	return rem
+}
+
 func neg128(a raw128) raw128 {
 	// Negate a raw128 value
 	negLo, borrow := sub64(0, a.Lo, 0)
 	negHi, _ := sub64(0, a.Hi, borrow)
 	return raw128{negHi, negLo}
-}
-
-func uintMul128(a raw128, b uint64) raw128 {
-	// Perform integer multiplication of a raw128 value by a uint64 value, treating a as an unsigned integer.
-	// Does NOT handle overflow, so only use internally where overflow can't happen.
-	_, lo := mul128By64(a, raw64(b))
-	return lo
-}
-
-func sintMul128(a raw128, b int64) raw128 {
-	// Perform integer multiplication of a raw128 value by a int64 value, treating a as an signed integer.
-	if b < 0 {
-		// If b is negative negate the input and then multiply.
-		a = neg128(a)
-		b = -b
-	}
-
-	_, lo := mul128By64(a, raw64(b))
-	return lo
 }
 
 func ushouldRound128(r, b raw128) bool {
@@ -208,58 +201,6 @@ func leadingZeroBits128(a raw128) uint64 {
 	} else {
 		return leadingZeroBits64(a.Hi)
 	}
-}
-
-func uintDiv128(a raw128, b uint64) raw128 {
-	rawB := raw64(b)
-
-	if ult64(a.Hi, rawB) {
-		// If the high part of a is less than b, then we can use a single 64-bit division
-		q, r := div64(a.Hi, a.Lo, rawB)
-		if ushouldRound64(r, rawB) {
-			// If the remainder is greater than half of b, round up.
-			q++
-		}
-
-		return raw128{0, q}
-	}
-
-	qHi, r := div64(0, a.Hi, rawB)
-	qLo, r := div64(r, a.Lo, rawB)
-
-	if ushouldRound64(r, rawB) {
-		// If the remainder is greater than half of b, round up.
-		qLo++
-		if qLo == 0 {
-			// If we overflowed the low part, we need to increment the high part.
-			qHi++
-		}
-	}
-
-	return raw128{qHi, qLo}
-}
-
-func sintDiv128(a raw128, b int64) raw128 {
-	var bUnsigned uint64
-
-	sign := int64(1)
-	if isNeg128(a) {
-		a = sintMul128(a, -1)
-		sign = -1
-	}
-
-	if b < 0 {
-		// If b is negative, we need to adjust the sign.
-		bUnsigned = uint64(-b)
-		sign = -sign
-	} else {
-		bUnsigned = uint64(b)
-	}
-
-	// Does rounding for us
-	res := uintDiv128(a, bUnsigned)
-
-	return sintMul128(res, sign)
 }
 
 func isZero128(a raw128) bool {
@@ -339,7 +280,7 @@ func unscaledRaw128(a uint64) raw128 {
 
 // A utility function used in the 128x128 multiplication algorithm to efficiently
 // handle multiplications where one of the operands fits in 64 bits.
-func mul128By64(a raw128, b raw64) (hi, lo raw128) {
+func mul128By64(a raw128, b raw64) (hi, mid, lo raw64) {
 	// NOTE: Earlier versions of this function would try to "fast return"
 	// when a or b were zero, but it actually resulted in slower code.
 	// The go compiler can turn bits.Mul64 into a single instruction
@@ -370,16 +311,16 @@ func mul128By64(a raw128, b raw64) (hi, lo raw128) {
 
 	var w, z raw64
 	var carry uint64
-	w, lo.Lo = mul64(a.Lo, b)
-	hi.Lo, z = mul64(a.Hi, b)
+	w, lo = mul64(a.Lo, b)
+	hi, z = mul64(a.Hi, b)
 
-	lo.Hi, carry = add64(w, z, 0)
+	mid, carry = add64(w, z, 0)
 
 	// Can't overflow, since that would imply a 128 x 64 multiplication
 	// overflowed 192 bits, which is not possible.
-	hi.Lo, _ = add64(hi.Lo, raw64Zero, carry)
+	hi, _ = add64(hi, raw64Zero, carry)
 
-	return hi, lo
+	return hi, mid, lo
 }
 
 func div192by128(hi, mid, lo raw64, y raw128) (quo raw128, rem raw128) {
@@ -404,17 +345,13 @@ func div192by128(hi, mid, lo raw64, y raw128) (quo raw128, rem raw128) {
 	// original numerator to get an intermediate remainder. Note that if our
 	// estimate is too high, this will result in a negative remainder, that
 	// we'll have to adjust afterwards
-	pHi, pLo := mul128By64(y, quo.Hi)
-
-	// TODO: I think that pHi is always zero here, but I'm not 100% sure.
-	if !isZero128(pHi) {
-		panic("div192by128: estimate too high, pHi is non-zero")
-	}
+	var prod raw128
+	_, prod.Hi, prod.Lo = mul128By64(y, quo.Hi)
 
 	// Subtract out the product from the top two parts (hi and mid) of the numerator
 	// to get an interim result.
-	interimMid, borrow := sub64(mid, pLo.Lo, 0)
-	interimHi, borrow := sub64(hi, pLo.Hi, borrow)
+	interimMid, borrow := sub64(mid, prod.Lo, 0)
+	interimHi, borrow := sub64(hi, prod.Hi, borrow)
 
 	if borrow != 0 {
 		// If we borrowed it means that our estimate was too high and the remainder is now negative.
@@ -461,13 +398,13 @@ func div192by128(hi, mid, lo raw64, y raw128) (quo raw128, rem raw128) {
 		quo.Lo, _ = div64(finalHi, finalLo, estY)
 
 		// Now we just need to compute the final remainder
-		pHi, pLo = mul128By64(y, quo.Lo)
+		pHi, pMid, pLo := mul128By64(y, quo.Lo)
 
 		// NOTE: The final of the three subtractions should always result in zero, but we still do it to
 		// see if our estimate was too high, and set the borroow flag.
-		rem.Lo, borrow = sub64(lo, pLo.Lo, 0)
-		rem.Hi, borrow = sub64(interimMid, pLo.Hi, borrow)
-		_, borrow = sub64(interimHi, pHi.Lo, borrow)
+		rem.Lo, borrow = sub64(lo, pLo, 0)
+		rem.Hi, borrow = sub64(interimMid, pMid, borrow)
+		_, borrow = sub64(interimHi, pHi, borrow)
 
 		needsAdjustment = borrow != 0
 	}

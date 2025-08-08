@@ -61,6 +61,7 @@ operations = {
     "Mul": (lambda a, b: a * b, "{} * {} = {}"),
     "Div": (lambda a, b: a / b, "{} / {} = {}"),
     "FMD": (lambda a, b, c: a * b / c, "{} * {} / {} = {}"),
+    "Mod": (lambda a, b: a % b, "{} % {} = {}"),
     "Sqrt": (lambda a: a.sqrt(), "sqrt({}) = {}"),
     "Ln": (lambda a: a.ln(), "ln({}) = {}"),
     "Exp": (lambda a: a.exp(), "exp({}) = {}"),

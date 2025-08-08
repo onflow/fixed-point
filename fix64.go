@@ -46,26 +46,6 @@ func (a Fix64) Neg() (Fix64, error) {
 func (a UFix64) IsZero() bool { return isZero64(raw64(a)) }
 func (a Fix64) IsZero() bool  { return isZero64(raw64(a)) }
 
-// These methods DO NOT check for overflow or underflow, so we keep them internal; they
-// save time and error checking when we are doing computations with known bounds
-// (i.e. in our transcendental functions).
-
-// intMul multiplies a by b *without* checking for overflow or underflow.
-func (a UFix64) intMul(b uint64) UFix64 { return UFix64(uintMul64(raw64(a), b)) }
-func (a Fix64) intMul(b int64) Fix64    { return Fix64(sintMul64(raw64(a), b)) }
-
-// intDiv divides a by b *without* checking for overflow or underflow.
-func (a UFix64) intDiv(b uint64) UFix64 { return UFix64(uintDiv64(raw64(a), b)) }
-func (a Fix64) intDiv(b int64) Fix64    { return Fix64(sintDiv64(raw64(a), b)) }
-
-// shiftLeft shifts a left by n bits *without* checking for overflow.
-func (a UFix64) shiftLeft(n uint64) UFix64 { return UFix64(shiftLeft64(raw64(a), n)) }
-func (a Fix64) shiftLeft(n uint64) Fix64   { return Fix64(shiftLeft64(raw64(a), n)) }
-
-// shiftRight shifts a right by n bits *without* checking for underflow.
-func (a UFix64) shiftRight(n uint64) UFix64 { return UFix64(ushiftRight64(raw64(a), n)) }
-func (a Fix64) shiftRight(n uint64) Fix64   { return Fix64(sshiftRight64(raw64(a), n)) }
-
 // == Arithmetic Operators ==
 
 // Add returns the sum of a and b, or an error on overflow.
@@ -256,14 +236,40 @@ func (a Fix64) FMD(b, c Fix64) (Fix64, error) {
 	res, err := aUnsigned.FMD(bUnsigned, cUnsigned)
 
 	if err != nil {
-		if err == ErrOverflow && sign < 0 {
-			return Fix64Zero, ErrNegOverflow
-		} else {
-			return Fix64Zero, err
-		}
+		return Fix64Zero, applySign(err, sign)
 	}
 
 	return res.ApplySign(sign)
+}
+
+// Returns the remainder of a divided by b, or an error on division by zero.
+func (a UFix64) Mod(b UFix64) (UFix64, error) {
+	if b.IsZero() {
+		return UFix64Zero, ErrDivByZero
+	}
+
+	rem := mod64(raw64(a), raw64(b))
+
+	return UFix64(rem), nil
+}
+
+// Returns the remainder of a divided by b, the result matches the sign of a (as per Go's %
+// operator).
+func (a Fix64) Mod(b Fix64) (Fix64, error) {
+	if b.IsZero() {
+		return Fix64Zero, ErrDivByZero
+	}
+
+	aUnsigned, aSign := a.Abs()
+	bUnsigned, _ := b.Abs()
+
+	rem, err := aUnsigned.Mod(bUnsigned)
+
+	if err != nil {
+		return Fix64Zero, err
+	}
+
+	return rem.ApplySign(aSign)
 }
 
 // Sqrt returns the square root of x using Newton-Rhaphson. Note that this
@@ -366,40 +372,25 @@ func (x UFix64) Sqrt() (UFix64, error) {
 	return UFix64(est), nil
 }
 
-// A utility function to prescale inputs to ln() and pow()
-func (x UFix64) prescale() (UFix64, uint64) {
-	// For very small values, converting to fix192 will lose precision. To avoid this,
-	// we first check to see if the input has more leading zero bits than the
-	// fixed-point representation of 1, and if so, we scale it up by shifting
-	// it left by one less than the difference.
-	prescale := uint64(0)
-	zeros := leadingZeroBits64(raw64(x))
-
-	if zeros > Fix64OneLeadingZeros {
-		// We need to shift left by enough so that we have one more leading zero bit
-		// than the fixed point representation of 1.
-		prescale = zeros - Fix64OneLeadingZeros - 1
-
-		x = x.shiftLeft(prescale)
-	}
-
-	return x, prescale
-}
-
 func (x UFix64) Ln() (Fix64, error) {
-	// Prescale to avoid precision loss when converting to fix192
-	x, prescale := x.prescale()
-
 	// TODO: x192.ln() provides a ton of precision that we don't need, it
 	// would be ideal if we could pass an error limit to it so it could
 	// stop early when we don't need the full precision.
-	res192, err := x.toFix192_old().ln(prescale)
+	res192, err := x.toFix192().ln()
 
 	if err != nil {
 		return Fix64Zero, err
 	}
 
-	return res192.toFix64()
+	res, err := res192.toFix64()
+
+	// TODO: Should this catch underflow?
+	if err == ErrUnderflow {
+		// For ln underflows, we just return 0.
+		return Fix64Zero, nil
+	}
+
+	return res, err
 }
 
 // Exp(x) returns e^x, or an error on overflow or underflow. Note that although the
@@ -418,7 +409,7 @@ func (x Fix64) Exp() (UFix64, error) {
 	}
 
 	// Use the fix192 implementation of Exp
-	res192, err := x.toFix192_old().exp()
+	res192, err := x.toFix192().exp()
 
 	if err != nil {
 		return UFix64Zero, err
@@ -453,13 +444,10 @@ func (a UFix64) Pow(b Fix64) (UFix64, error) {
 		return a, nil
 	}
 
-	// Prescale the base to avoid precision loss when converting to fix192
-	a, prescale := a.prescale()
+	a192 := a.toFix192()
+	b192 := b.toFix192()
 
-	a192 := a.toFix192_old()
-	b192 := b.toFix192_old()
-
-	res192, err := a192.pow(b192, prescale)
+	res192, err := a192.pow(b192)
 
 	if err != nil {
 		return UFix64Zero, err
@@ -468,7 +456,7 @@ func (a UFix64) Pow(b Fix64) (UFix64, error) {
 	return res192.toUFix64()
 }
 
-func trigResult64(res192 fix192_old, err error) (Fix64, error) {
+func trigResult64(res192 fix192, err error) (Fix64, error) {
 	if err != nil {
 		return Fix64Zero, err
 	}
@@ -486,117 +474,15 @@ func trigResult64(res192 fix192_old, err error) (Fix64, error) {
 }
 
 func (x Fix64) Sin() (Fix64, error) {
-	return trigResult64(x.toFix192_old().sin())
+	x192 := x.toFix192()
+	res192, err := x192.sin()
+
+	return trigResult64(res192, err)
 }
 
 func (x Fix64) Cos() (Fix64, error) {
-	return trigResult64(x.toFix192_old().cos())
+	x192 := x.toFix192()
+	res192, err := x192.cos()
+
+	return trigResult64(res192, err)
 }
-
-func (x Fix64) Tan() (Fix64, error) {
-	// Unlike with sin and cos, we want tan() to return an underflow error
-	// TODO: Do we really? :laughing:
-	res, err := x.toFix192_old().tan()
-
-	if err != nil {
-		return Fix64Zero, err
-	}
-
-	return res.toFix64()
-}
-
-// Cos returns the cosine of x (in radians).
-// func (x Fix64) Cos() (Fix64, error) {
-// 	// Ignore the sign since cos(-x) = cos(x)
-// 	xScaled, _ := clampAngle64(x)
-
-// 	if xScaled.IsZero() {
-// 		return Fix64One, nil // cos(0) = 1
-// 	}
-
-// 	// We use the following identities to compute cos(x):
-// 	//     cos(x) = sin(π/2 - x)
-// 	//     cos(x) = -sin(3π/2 − x)
-// 	// If x is is less than or equal to π/2, we can use the first identity,
-// 	// if x is greater than π/2, we use the second identity.
-// 	// In both cases, we end up with a value in the range [0, π], to pass
-// 	// to scaledSin().
-// 	var yScaled UFix64
-// 	var sign int64
-
-// 	if xScaled.Lt(ufix64HalfPiScaled) {
-// 		// cos(x) = sin(π/2 - x)
-// 		yScaled, _ = ufix64HalfPiScaled.Sub(xScaled)
-// 		sign = 1
-// 	} else {
-// 		// cos(x) = -sin(3π/2 − x)
-// 		yScaled, _ = ufix64ThreeHalfPiScaled.Sub(xScaled)
-// 		sign = -1
-// 	}
-
-// 	resScaled, err := yScaled.innerSin64()
-// 	if err != nil {
-// 		return Fix64Zero, err
-// 	}
-
-// 	res, _ := resScaled.Div(fix64TrigScale)
-
-// 	res = res.intMul(sign)
-
-// 	return res, nil
-// }
-
-// Tan returns the tangent of x (in radians).
-// func (x Fix64) Tan() (Fix64, error) {
-// tan(x) = sin(x) / cos(x)
-// We can't use the Sin() and Cos() methods directly because they don't provide
-// enough precision once we divide the results.
-
-// Normalize the input angle to the range [0, π]
-// xScaled, sign := clampAngle64(x)
-
-// if xScaled.IsZero() {
-// 	return Fix64Zero, nil
-// }
-// // We compute y the same way we did in the cos() function above.
-// var yScaled UFix64
-
-// if xScaled.Lt(ufix64HalfPiScaled) {
-// 	// cos(x) = sin(π/2 - x)
-// 	yScaled, _ = ufix64HalfPiScaled.Sub(xScaled)
-// } else {
-// 	// cos(x) = -sin(3π/2 − x)
-// 	yScaled, _ = ufix64ThreeHalfPiScaled.Sub(xScaled)
-// 	sign *= -1
-// }
-
-// sinX, err := xScaled.innerSin64()
-// if err != nil {
-// 	return Fix64Zero, err
-// }
-
-// cosX, err := yScaled.innerSin64()
-// if err != nil {
-// 	return Fix64Zero, err
-// }
-
-// res, err := sinX.FMD(Fix64One, cosX)
-
-// if err != nil {
-// 	return Fix64Zero, err
-// }
-
-// // if res > Fix64(5e15) {
-// // 	if sign < 0 {
-// // 		// If the result is too large and negative, we return a negative overflow error
-// // 		return 0, ErrNegOverflow
-// // 	} else {
-// // 		// If the result is too large and positive, we return a positive overflow error
-// // 		return 0, ErrOverflow
-// // 	}
-// // }
-
-// res = res.intMul(sign)
-
-// return res, nil
-// }

@@ -15,7 +15,9 @@ func (x Fix64) ToFix128() Fix128 {
 
 	unsignedRes := unsignedX.ToUFix128()
 
-	return Fix128(unsignedRes).intMul(sign)
+	res, _ := unsignedRes.ApplySign(sign)
+
+	return res
 }
 
 // Converts a UFix128 to a UFix64, returns an error if the value can't be represented in UFix64,

@@ -50,6 +50,11 @@ func div64(a, b, y raw64) (raw64, raw64) {
 	return raw64(q64), raw64(r64)
 }
 
+func mod64(a, b raw64) raw64 {
+	// Compute the modulus of two raw64 values, treating them as unsigned integers.
+	return raw64(uint64(a) % uint64(b))
+}
+
 func neg64(a raw64) raw64 {
 	// Negate a raw64 value, treating it as a signed integer.
 	return raw64(-int64(a))

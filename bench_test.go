@@ -1,6 +1,7 @@
 package fixedPoint
 
 import (
+	"math"
 	"math/big"
 	"testing"
 )
@@ -161,11 +162,10 @@ func BenchmarkSinFix64(b *testing.B) {
 	}
 }
 
-func BenchmarkSinTestFix64(b *testing.B) {
-	// a := Fix64(0x5f5e100)
-	a := Fix64(0x2faf080) // 0.5
+func BenchmarkSin_Ref(b *testing.B) {
+	a := 5.0
 	for i := 0; i < b.N; i++ {
-		_, _ = a.Sin()
+		_ = math.Sin(a)
 	}
 }
 

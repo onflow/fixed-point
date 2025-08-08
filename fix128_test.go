@@ -628,6 +628,46 @@ func TestFMDFix128(t *testing.T) {
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
+func TestModUFix128(t *testing.T) {
+	testState := &TestState{
+		outType:      "UFix128",
+		operation:    "Mod",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+		a := UFix128(tc.A)
+		b := UFix128(tc.B)
+		res, err := a.Mod(b)
+
+		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestModFix128(t *testing.T) {
+	testState := &TestState{
+		outType:      "Fix128",
+		operation:    "Mod",
+		successCount: 0,
+		failureCount: 0,
+	}
+
+	t.Parallel()
+
+	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+		a := Fix128(tc.A)
+		b := Fix128(tc.B)
+		res, err := a.Mod(b)
+
+		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
 func TestSqrtUFix128(t *testing.T) {
 	testState := &TestState{
 		outType:      "UFix128",
@@ -705,30 +745,6 @@ func TestPowFix128(t *testing.T) {
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
-// It turns out that for sin, cos, and tan, simply normalizing the input angle into
-// the range [-π, π] is a huge potential source of error. We can test this function
-// separately, to make sure we aren't introducing errors before we even get to the
-// core sin/cos calculations.
-// func TestClampFix128(t *testing.T) {
-// 	testState := &TestState{
-// 		outType:      "Fix128",
-// 		operation:    "Clamp",
-// 		successCount: 0,
-// 		failureCount: 0,
-// 	}
-
-// 	t.Parallel()
-
-// 	for tc := range OneArgTestChannel128(t, testState.outType, testState.operation) {
-// 		a := Fix128(tc.A)
-// 		res, sign := clampAngle128(a)
-// 		resSigned := Fix128(res).intMul(sign)
-
-// 		OneArgResultCheck128(t, testState, tc, raw128(resSigned), nil)
-// 	}
-// 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
-// }
-
 func TestSinFix128(t *testing.T) {
 	testState := &TestState{
 		outType:      "Fix128",
@@ -763,71 +779,6 @@ func TestCosFix128(t *testing.T) {
 		res, err := a.Cos()
 
 		OneArgResultCheck128(t, testState, tc, raw128(res), err)
-	}
-	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
-}
-
-func TestTanFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "Tan",
-		successCount: 0,
-		failureCount: 0,
-	}
-
-	t.Parallel()
-
-	for tc := range OneArgTestChannel128(t, testState.outType, testState.operation) {
-		a := Fix128(tc.A)
-		res, err := a.Tan()
-
-		OneArgResultCheck128(t, testState, tc, raw128(res), err)
-	}
-	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
-}
-
-// func TestMulFix192(t *testing.T) {
-// 	testState := &TestState{
-// 		outType:      "UFix128",
-// 		operation:    "Mul",
-// 		successCount: 0,
-// 		failureCount: 0,
-// 	}
-
-// 	t.Parallel()
-
-// 	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
-// 		a := UFix128(tc.A)
-// 		b := UFix128(tc.B)
-// 		res, err := a.Mul192(b)
-
-// 		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
-// 	}
-// 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
-// }
-
-func TestClampFix192(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "Clamp",
-		successCount: 0,
-		failureCount: 0,
-	}
-
-	t.Parallel()
-
-	for tc := range OneArgTestChannel128(t, testState.outType, testState.operation) {
-		a := Fix128(tc.A)
-		a192 := a.toFix192()
-		res, sign := a192.clampAngle()
-		res = res.uintMul(21264757054)
-		res128, err := res.toFix128()
-
-		if err == nil {
-			res128 = res128.intMul(sign)
-		}
-
-		OneArgResultCheck128(t, testState, tc, raw128(res128), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }

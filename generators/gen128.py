@@ -40,6 +40,7 @@ replacements = [
     [r"leadingZeroBits64", "leadingZeroBits128",],
     [r"minLn64", "minLn128",],
     [r"maxLn64", "maxLn128",],
+    [r"mod64", "mod128",],
     [r"mul64", "mul128",],
     [r"neg64", "neg128",],
     [r"raw64", "raw128",],
