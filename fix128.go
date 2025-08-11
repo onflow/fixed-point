@@ -8,13 +8,6 @@ package fixedPoint
 // the fix64.go file, they should be fixed there first, and then this file should
 // be regenerated.
 
-func NewFix128(hi, lo uint64) Fix128 {
-	return Fix128{
-		Hi: raw64(hi),
-		Lo: raw64(lo),
-	}
-}
-
 // == Comparison Operators ==
 
 // Eq returns true if a and b are equal.
@@ -283,14 +276,14 @@ func (a Fix128) Mod(b Fix128) (Fix128, error) {
 // Sqrt returns the square root of x using Newton-Rhaphson. Note that this
 // method returns an error result for consistency with other methods,
 // but can't actually ever fail...
-func (x UFix128) Sqrt() (UFix128, error) {
-	if x.IsZero() {
+func (a UFix128) Sqrt() (UFix128, error) {
+	if a.IsZero() {
 		return UFix128Zero, nil
 	}
 
 	// Count the number of leading zero bits in x, this is a cheap way of estimating
 	// the order of magnitude of the input.
-	n := leadingZeroBits128(raw128(x))
+	n := leadingZeroBits128(raw128(a))
 
 	// The loop below needs to start with some kind of estimate for the square root.
 	// The closer it is to correct, the faster the loop will converge. We'll start
@@ -299,7 +292,7 @@ func (x UFix128) Sqrt() (UFix128, error) {
 	// representation of 1. This will be of the same order of magnitude as the square
 	// root, allowing our Newton-Raphson loop below to converge quickly.
 
-	est := raw128(x)
+	est := raw128(a)
 
 	if n < Fix128OneLeadingZeros {
 		// If the input has fewer leading zeros than FixOne, we'll start with an input
@@ -313,7 +306,7 @@ func (x UFix128) Sqrt() (UFix128, error) {
 	// The inner loop here will frequently divide the input by the current estimate,
 	// so instead of using the Fix128.Div method, we expand the numerator once outside
 	// the loop, and then directly call div128 in the loop.
-	xHi, xLo := mul128(raw128(x), raw128(Fix128One))
+	xHi, xLo := mul128(raw128(a), raw128(Fix128One))
 
 	for {
 		// This division can't fail: est is always a positive value somewhere between
@@ -380,11 +373,11 @@ func (x UFix128) Sqrt() (UFix128, error) {
 	return UFix128(est), nil
 }
 
-func (x UFix128) Ln() (Fix128, error) {
+func (a UFix128) Ln() (Fix128, error) {
 	// TODO: x192.ln() provides a ton of precision that we don't need, it
 	// would be ideal if we could pass an error limit to it so it could
 	// stop early when we don't need the full precision.
-	res192, err := x.toFix192().ln()
+	res192, err := a.toFix192().ln()
 
 	if err != nil {
 		return Fix128Zero, err
@@ -403,21 +396,21 @@ func (x UFix128) Ln() (Fix128, error) {
 
 // Exp(x) returns e^x, or an error on overflow or underflow. Note that although the
 // input is a Fix128, the output is a UFix128, since e^x is always positive.
-func (x Fix128) Exp() (UFix128, error) {
+func (a Fix128) Exp() (UFix128, error) {
 	// If x is 0, return 1.
-	if x.IsZero() {
+	if a.IsZero() {
 		return UFix128One, nil
 	}
 
 	// We can quickly check to see if the input will overflow or underflow
-	if x.Gt(maxLn128) {
+	if a.Gt(maxLn128) {
 		return UFix128Zero, ErrOverflow
-	} else if x.Lt(minLn128) {
+	} else if a.Lt(minLn128) {
 		return UFix128Zero, ErrUnderflow
 	}
 
 	// Use the fix192 implementation of Exp
-	res192, err := x.toFix192().exp()
+	res192, err := a.toFix192().exp()
 
 	if err != nil {
 		return UFix128Zero, err
@@ -481,15 +474,15 @@ func trigResult128(res192 fix192, err error) (Fix128, error) {
 	return res, nil
 }
 
-func (x Fix128) Sin() (Fix128, error) {
-	x192 := x.toFix192()
+func (a Fix128) Sin() (Fix128, error) {
+	x192 := a.toFix192()
 	res192, err := x192.sin()
 
 	return trigResult128(res192, err)
 }
 
-func (x Fix128) Cos() (Fix128, error) {
-	x192 := x.toFix192()
+func (a Fix128) Cos() (Fix128, error) {
+	x192 := a.toFix192()
 	res192, err := x192.cos()
 
 	return trigResult128(res192, err)

@@ -275,14 +275,14 @@ func (a Fix64) Mod(b Fix64) (Fix64, error) {
 // Sqrt returns the square root of x using Newton-Rhaphson. Note that this
 // method returns an error result for consistency with other methods,
 // but can't actually ever fail...
-func (x UFix64) Sqrt() (UFix64, error) {
-	if x.IsZero() {
+func (a UFix64) Sqrt() (UFix64, error) {
+	if a.IsZero() {
 		return UFix64Zero, nil
 	}
 
 	// Count the number of leading zero bits in x, this is a cheap way of estimating
 	// the order of magnitude of the input.
-	n := leadingZeroBits64(raw64(x))
+	n := leadingZeroBits64(raw64(a))
 
 	// The loop below needs to start with some kind of estimate for the square root.
 	// The closer it is to correct, the faster the loop will converge. We'll start
@@ -291,7 +291,7 @@ func (x UFix64) Sqrt() (UFix64, error) {
 	// representation of 1. This will be of the same order of magnitude as the square
 	// root, allowing our Newton-Raphson loop below to converge quickly.
 
-	est := raw64(x)
+	est := raw64(a)
 
 	if n < Fix64OneLeadingZeros {
 		// If the input has fewer leading zeros than FixOne, we'll start with an input
@@ -305,7 +305,7 @@ func (x UFix64) Sqrt() (UFix64, error) {
 	// The inner loop here will frequently divide the input by the current estimate,
 	// so instead of using the Fix64.Div method, we expand the numerator once outside
 	// the loop, and then directly call div64 in the loop.
-	xHi, xLo := mul64(raw64(x), raw64(Fix64One))
+	xHi, xLo := mul64(raw64(a), raw64(Fix64One))
 
 	for {
 		// This division can't fail: est is always a positive value somewhere between
@@ -372,11 +372,11 @@ func (x UFix64) Sqrt() (UFix64, error) {
 	return UFix64(est), nil
 }
 
-func (x UFix64) Ln() (Fix64, error) {
+func (a UFix64) Ln() (Fix64, error) {
 	// TODO: x192.ln() provides a ton of precision that we don't need, it
 	// would be ideal if we could pass an error limit to it so it could
 	// stop early when we don't need the full precision.
-	res192, err := x.toFix192().ln()
+	res192, err := a.toFix192().ln()
 
 	if err != nil {
 		return Fix64Zero, err
@@ -395,21 +395,21 @@ func (x UFix64) Ln() (Fix64, error) {
 
 // Exp(x) returns e^x, or an error on overflow or underflow. Note that although the
 // input is a Fix64, the output is a UFix64, since e^x is always positive.
-func (x Fix64) Exp() (UFix64, error) {
+func (a Fix64) Exp() (UFix64, error) {
 	// If x is 0, return 1.
-	if x.IsZero() {
+	if a.IsZero() {
 		return UFix64One, nil
 	}
 
 	// We can quickly check to see if the input will overflow or underflow
-	if x.Gt(maxLn64) {
+	if a.Gt(maxLn64) {
 		return UFix64Zero, ErrOverflow
-	} else if x.Lt(minLn64) {
+	} else if a.Lt(minLn64) {
 		return UFix64Zero, ErrUnderflow
 	}
 
 	// Use the fix192 implementation of Exp
-	res192, err := x.toFix192().exp()
+	res192, err := a.toFix192().exp()
 
 	if err != nil {
 		return UFix64Zero, err
@@ -473,15 +473,15 @@ func trigResult64(res192 fix192, err error) (Fix64, error) {
 	return res, nil
 }
 
-func (x Fix64) Sin() (Fix64, error) {
-	x192 := x.toFix192()
+func (a Fix64) Sin() (Fix64, error) {
+	x192 := a.toFix192()
 	res192, err := x192.sin()
 
 	return trigResult64(res192, err)
 }
 
-func (x Fix64) Cos() (Fix64, error) {
-	x192 := x.toFix192()
+func (a Fix64) Cos() (Fix64, error) {
+	x192 := a.toFix192()
 	res192, err := x192.cos()
 
 	return trigResult64(res192, err)

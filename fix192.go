@@ -66,13 +66,13 @@ func (a fix192) ult(b fix192) bool {
 }
 
 // Converts a UFix64 value to a fix192 value.
-func (x UFix64) toFix192() fix192 {
-	return x.ToUFix128().toFix192()
+func (a UFix64) toFix192() fix192 {
+	return a.ToUFix128().toFix192()
 }
 
 // Converts a Fix64 value to a fix192 value.
-func (x Fix64) toFix192() fix192 {
-	return x.ToFix128().toFix192()
+func (a Fix64) toFix192() fix192 {
+	return a.ToFix128().toFix192()
 }
 
 // Converts a UFix128 value to a fix192 value.
