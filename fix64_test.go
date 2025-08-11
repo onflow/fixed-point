@@ -49,6 +49,9 @@ type TestState struct {
 }
 
 func TestRounding64(t *testing.T) {
+
+	t.Parallel()
+
 	a := UFix64(10 * Fix64Scale)
 	b := UFix64(11 * Fix64Scale)
 
@@ -65,6 +68,8 @@ func TestRounding64(t *testing.T) {
 // A useful function to debug a specific test case. You can just copy/paste the test case values
 // from a failing test's log output into this function and then debug it.
 func TestDebugOneArgTestCase64(t *testing.T) {
+
+	t.Parallel()
 
 	tc := OneArgTestCase64{
 		A:        0x7ffffffffa0a1eff,
@@ -93,6 +98,8 @@ func TestDebugOneArgTestCase64(t *testing.T) {
 
 func TestDebugTwoArgTestCase64(t *testing.T) {
 	// t.Skip()
+
+	t.Parallel()
 
 	tc := TwoArgTestCase64{
 		A:        0x0000000005f5e101,
@@ -407,14 +414,15 @@ func ThreeArgResultCheck64(t *testing.T, ts *TestState, tc ThreeArgTestCase64, a
 }
 
 func TestAddUFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "UFix64",
 		operation:    "Add",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
@@ -427,14 +435,15 @@ func TestAddUFix64(t *testing.T) {
 }
 
 func TestAddFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "Fix64",
 		operation:    "Add",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
@@ -447,14 +456,15 @@ func TestAddFix64(t *testing.T) {
 }
 
 func TestSubUFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "UFix64",
 		operation:    "Sub",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
@@ -467,14 +477,15 @@ func TestSubUFix64(t *testing.T) {
 }
 
 func TestSubFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "Fix64",
 		operation:    "Sub",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
@@ -487,14 +498,15 @@ func TestSubFix64(t *testing.T) {
 }
 
 func TestMulUFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "UFix64",
 		operation:    "Mul",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
@@ -507,14 +519,15 @@ func TestMulUFix64(t *testing.T) {
 }
 
 func TestMulFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "Fix64",
 		operation:    "Mul",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
@@ -527,14 +540,15 @@ func TestMulFix64(t *testing.T) {
 }
 
 func TestDivUFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "UFix64",
 		operation:    "Div",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
@@ -547,14 +561,15 @@ func TestDivUFix64(t *testing.T) {
 }
 
 func TestDivFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "Fix64",
 		operation:    "Div",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
@@ -567,14 +582,15 @@ func TestDivFix64(t *testing.T) {
 }
 
 func TestFMDUFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "UFix64",
 		operation:    "FMD",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range ThreeArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
@@ -588,14 +604,15 @@ func TestFMDUFix64(t *testing.T) {
 }
 
 func TestFMDFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "Fix64",
 		operation:    "FMD",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range ThreeArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
@@ -609,14 +626,15 @@ func TestFMDFix64(t *testing.T) {
 }
 
 func TestModUFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "UFix64",
 		operation:    "Mod",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
@@ -629,14 +647,15 @@ func TestModUFix64(t *testing.T) {
 }
 
 func TestModFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "Fix64",
 		operation:    "Mod",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
@@ -649,14 +668,15 @@ func TestModFix64(t *testing.T) {
 }
 
 func TestSqrtUFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "UFix64",
 		operation:    "Sqrt",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
@@ -668,14 +688,15 @@ func TestSqrtUFix64(t *testing.T) {
 }
 
 func TestLnFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "Fix64",
 		operation:    "Ln",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
@@ -687,14 +708,15 @@ func TestLnFix64(t *testing.T) {
 }
 
 func TestExpFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "UFix64",
 		operation:    "Exp",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
@@ -706,14 +728,15 @@ func TestExpFix64(t *testing.T) {
 }
 
 func TestPowFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "UFix64",
 		operation:    "Pow",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range TwoArgTestChannel64(t, testState.outType, testState.operation) {
 		a := UFix64(tc.A)
@@ -751,14 +774,15 @@ func TestPowFix64(t *testing.T) {
 // }
 
 func TestSinFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "Fix64",
 		operation:    "Sin",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
@@ -770,14 +794,15 @@ func TestSinFix64(t *testing.T) {
 }
 
 func TestCosFix64(t *testing.T) {
+
+	t.Parallel()
+
 	testState := &TestState{
 		outType:      "Fix64",
 		operation:    "Cos",
 		successCount: 0,
 		failureCount: 0,
 	}
-
-	t.Parallel()
 
 	for tc := range OneArgTestChannel64(t, testState.outType, testState.operation) {
 		a := Fix64(tc.A)
