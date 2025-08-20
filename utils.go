@@ -3,15 +3,15 @@ package fixedPoint
 const scaleFactor64To128 = raw64(Fix128Scale / Fix64Scale)
 
 // Converts a UFix64 to a UFix128, can't fail since UFix128 has a larger range than UFix64.
-func (x UFix64) ToUFix128() UFix128 {
-	hi, lo := mul64(raw64(x), scaleFactor64To128)
+func (a UFix64) ToUFix128() UFix128 {
+	hi, lo := mul64(raw64(a), scaleFactor64To128)
 
 	return UFix128{Hi: hi, Lo: lo}
 }
 
 // Converts a Fix64 to a Fix128, can't fail since Fix128 has a larger range than Fix64.
-func (x Fix64) ToFix128() Fix128 {
-	unsignedX, sign := x.Abs()
+func (a Fix64) ToFix128() Fix128 {
+	unsignedX, sign := a.Abs()
 
 	unsignedRes := unsignedX.ToUFix128()
 
