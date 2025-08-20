@@ -7,33 +7,33 @@ from data128 import *
 import itertools
 import sys
 import inspect
-import mpmath
+import mpmath as mp
 
 getcontext().prec = 100
-mpmath.mp.dps = 100
+mp.mp.dps = 100
 
 extraBits = 16  # The number of extra bits used in fix64_extra
 
-decPi = Decimal(str(mpmath.pi))  # Pi to 100 decimal places
+decPi = Decimal(str(mp.pi))  # Pi to 100 decimal places
 
 def hex64(val):
     """Convert a Decimal value to a hexadecimal string representation for a 64-bit type."""
-    intValue = int((val * 10**8).quantize(1, rounding='ROUND_HALF_UP')) & 0xFFFFFFFFFFFFFFFF
+    intValue = int((val * 10**8).quantize(1, rounding='ROUND_DOWN')) & 0xFFFFFFFFFFFFFFFF
     return f"0x{intValue:016x}"
 
 def hex128(val):
     """Convert a Decimal value to a hexadecimal string representation for a 128-bit type."""
-    intValue = int((val * 10**24).quantize(1, rounding='ROUND_HALF_UP')) & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+    intValue = int((val * 10**24).quantize(1, rounding='ROUND_DOWN')) & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
     return f"0x{((intValue >> 64) & 0xffffffffffffffff):016x}, 0x{(intValue & 0xffffffffffffffff):016x}"
 
 def decSin(x: Decimal) -> Decimal:
-    return Decimal(str(mpmath.sin(mpmath.mpf(str(x)))))
+    return Decimal(str(mp.sin(mp.mpf(str(x)))))
 
 def decCos(x: Decimal) -> Decimal:
-    return Decimal(str(mpmath.cos(mpmath.mpf(str(x)))))
+    return Decimal(str(mp.cos(mp.mpf(str(x)))))
 
 def decTan(x: Decimal) -> Decimal:
-    return Decimal(str(mpmath.tan(mpmath.mpf(str(x)))))
+    return Decimal(str(mp.tan(mp.mpf(str(x)))))
 
 def decClamp(x: Decimal) -> Decimal:
     """ Normalize a Decimal value to the range of (-π, π)."""
@@ -96,12 +96,13 @@ types = {
 }
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: add64.py <type> <operation>")
+    if len(sys.argv) != 3 and len(sys.argv) != 4:
+        print("Usage: add64.py <type> <operation> [<rounding>]")
         sys.exit(1)
 
     outputType = sys.argv[1]
     operation = sys.argv[2]
+    rounding = sys.argv[3] if len(sys.argv) == 4 else "ROUND_DOWN"
 
     if outputType not in types:
         print(f"Invalid output type: {outputType}. Must be one of {list(types.keys())}.")
@@ -109,6 +110,10 @@ def main():
 
     if operation not in operations:
         print(f"Invalid operation: {operation}. Must be one of {list(operations.keys())}.")
+        sys.exit(1)
+
+    if rounding not in ["ROUND_DOWN", "ROUND_HALF_UP", "ROUND_UP", "ROUND_HALF_EVEN"]:
+        print(f"Invalid rounding mode: {rounding}. Must be one of ['ROUND_DOWN', 'ROUND_HALF_UP', 'ROUND_UP', 'ROUND_HALF_EVEN'].")
         sys.exit(1)
 
     outputTypeInfo = types[outputType]
@@ -189,10 +194,12 @@ def main():
                 # the quantization call below. We know that any value larger than 2**128
                 # is an overflow in all of our types, so we can just skip the quantization step.
                 err = "Overflow"
-            elif not result.is_zero() and result.copy_sign(1) < (quanta / 2):
-                err = "Underflow"
             else:
-                result = result.quantize(quanta, rounding='ROUND_HALF_UP')
+                roundedResult = result.quantize(quanta, rounding=rounding)
+                if not result.is_zero() and roundedResult.is_zero():
+                    err = "Underflow"
+                result = roundedResult
+
         except (ZeroDivisionError, InvalidOperation):
             err = "DivByZero"
         except Overflow:
@@ -215,25 +222,10 @@ def main():
             result = Decimal(0)
             err = None
         
-        # if (operation == "Tan"):
-        #     # Producing accurate results for tan() close to ±π/2 is difficult, so we
-        #     # treat any result that is outside the range of -50M to 50M as an overflow.
-        #     if result > Decimal('5e7'):
-        #         err = "Overflow"
-        #     elif result < Decimal('-5e7'):
-        #         err = "NegOverflow"
-        
         if (operation == "Exp" or operation == "Pow") and not err and result.is_zero():
             # Technically, the exp() and pow() operations can only return positive, non-zero
             # results, so if it did return zero, it must have been an underflow.
             err = "Underflow"
-
-        # if (operation == "Exp" or operation == "Pow") and not err and result > Decimal('1e14'):
-            # For exp() and pow(), we round results that are larger than 100 trillion to "just"
-            # 23 decimal places, which is a million times better than any floating-point library
-            # can do, and way more trouble than it's worth to get that two digits for such large
-            # numbers...
-            # result = result.quantize(Decimal('1e-23'), rounding='ROUND_HALF_UP')
 
         if operation == "Pow" and values[0] == 0:
             # The Decimal library treats 0^x differently that we want to, so we override

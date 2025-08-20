@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
-search_replace.py: Reads from stdin, performs word-delimited search-and-replace for a list of term mappings, and replaces a specific multi-line comment block.
-
-Usage:
-    cat input.txt | python3 search_replace.py > output.txt
+search_replace.py: Reads from stdin, performs word-delimited search-and-replace for a list of term
+mappings, and replaces a specific multi-line comment block.
 
 Edit the 'replacements' list to add more mappings.
 """
@@ -15,22 +13,11 @@ replacements = [
     [r"add64", "add128",],
     [r"div64", "div128",],
     [r"Fix64", "Fix128",],
-    [r"ufix64HalfPiScaled", "ufix128HalfPiScaled",],
-    [r"UFix64Iota", "UFix128Iota",],
-    [r"fix64Ln2Scaled", "fix128Ln2Scaled",],
-    [r"fix64LnMultiplier", "fix128LnMultiplier",],
-    [r"fix64LnScale", "fix128LnScale",],
     [r"Fix64Max", "Fix128Max",],
     [r"Fix64Min", "Fix128Min",],
     [r"Fix64One", "Fix128One",],
     [r"Fix64OneLeadingZeros", "Fix128OneLeadingZeros",],
-    [r"ufix64PiScaled", "ufix128PiScaled",],
     [r"Fix64Scale", "Fix128Scale",],
-    [r"fix64SinIotaScaled", "fix128SinIotaScaled",],
-    [r"ufix64ThreeHalfPiScaled", "ufix128ThreeHalfPiScaled",],
-    [r"fix64TrigMultiplier", "fix128TrigMultiplier",],
-    [r"fix64TrigScale", "fix128TrigScale",],
-    [r"ufix64TwoPiScaled", "ufix128TwoPiScaled",],
     [r"Fix64Zero", "Fix128Zero",],
     [r"isEqual64", "isEqual128",],
     [r"isIota64", "isIota128",],
@@ -47,8 +34,6 @@ replacements = [
     [r"raw64Zero", "raw128Zero",],
     [r"result192ToFix64", "result192ToFix128",],
     [r"shiftLeft64", "shiftLeft128",],
-    [r"sintDiv64", "sintDiv128",],
-    [r"sintMul64", "sintMul128",],
     [r"slt64", "slt128",],
     [r"sshiftRight64", "sshiftRight128",],
     [r"sub64", "sub128",],
@@ -58,15 +43,9 @@ replacements = [
     [r"UFix64", "UFix128",],
     [r"UFix64One", "UFix128One",],
     [r"UFix64Zero", "UFix128Zero",],
-    [r"uintDiv64", "uintDiv128",],
-    [r"uintMul64", "uintMul128",],
     [r"ult64", "ult128",],
-    [r"unscaledRaw64", "unscaledRaw128",],
     [r"ushiftRight64", "ushiftRight128",],
     [r"ushouldRound64", "ushouldRound128",],
-    [r"clampAngle64", "clampAngle128",],
-    [r"lnInnerLoop64", "lnInnerLoop128",],
-    [r"innerSin64", "innerSin128",],
 ]
 
 # Multi-line comment block replacement

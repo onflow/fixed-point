@@ -142,7 +142,7 @@ func (a UFix128) ApplySign(sign int64) (Fix128, error) {
 }
 
 // Mul returns the product of a and b, or an error on overflow or underflow.
-func (a UFix128) Mul(b UFix128) (UFix128, error) {
+func (a UFix128) Mul(b UFix128, round RoundingMode) (UFix128, error) {
 	// It might seem strange to implement multiplication in terms of fused multiply-divide,
 	// but it turns out that a simple fixed-point multiplication needs to both
 	// multiply and divide anyway. (Multiply the inputs, and then divide by the scale factor.)
@@ -150,30 +150,30 @@ func (a UFix128) Mul(b UFix128) (UFix128, error) {
 	// Additionally, the logic for handling rounding is REALLY not trivial, so
 	// having that in one location is a big win. In the end, the only real cost
 	// is the overhead of an extra function call, which might be inlined anyway.
-	return a.FMD(b, UFix128One)
+	return a.FMD(b, UFix128One, round)
 }
 
 // Mul returns the product of a and b, or an error on overflow or underflow.
-func (a Fix128) Mul(b Fix128) (Fix128, error) {
+func (a Fix128) Mul(b Fix128, round RoundingMode) (Fix128, error) {
 	// Same rationale as above for UFix128.Mul, but even more critical because handling the
 	// signs correctly is ALSO not trivial.
-	return a.FMD(b, Fix128One)
+	return a.FMD(b, Fix128One, round)
 }
 
 // Div returns the quotient of a and b, or an error on division by zero, overflow, or underflow.
-func (a UFix128) Div(b UFix128) (UFix128, error) {
+func (a UFix128) Div(b UFix128, round RoundingMode) (UFix128, error) {
 	// Same rationale for using FMD as for UFix128.Mul
-	return a.FMD(UFix128One, b)
+	return a.FMD(UFix128One, b, round)
 }
 
 // Div returns the quotient of a and b, or an error on division by zero, overflow, or underflow.
-func (a Fix128) Div(b Fix128) (Fix128, error) {
+func (a Fix128) Div(b Fix128, round RoundingMode) (Fix128, error) {
 	// Same rationale as above...
-	return a.FMD(Fix128One, b)
+	return a.FMD(Fix128One, b, round)
 }
 
 // FMD returns a*b/c without intermediate rounding, or an error on division by zero, overflow, or underflow.
-func (a UFix128) FMD(b, c UFix128) (UFix128, error) {
+func (a UFix128) FMD(b, c UFix128, round RoundingMode) (UFix128, error) {
 	// Must come before the check for a or b == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
 		return UFix128Zero, ErrDivByZero
@@ -192,7 +192,7 @@ func (a UFix128) FMD(b, c UFix128) (UFix128, error) {
 
 	quo, rem := div128(hi, lo, raw128(c))
 
-	if ushouldRound128(rem, raw128(c)) {
+	if ushouldRound128(quo, rem, raw128(c), round) {
 		var carry uint64
 		quo, carry = add128(quo, raw128Zero, 1)
 
@@ -213,7 +213,7 @@ func (a UFix128) FMD(b, c UFix128) (UFix128, error) {
 }
 
 // FMD returns a*b/c without intermediate rounding, or an error on division by zero, overflow, or underflow.
-func (a Fix128) FMD(b, c Fix128) (Fix128, error) {
+func (a Fix128) FMD(b, c Fix128, round RoundingMode) (Fix128, error) {
 	// Must come before the check for a or b == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
 		return Fix128Zero, ErrDivByZero
@@ -234,7 +234,7 @@ func (a Fix128) FMD(b, c Fix128) (Fix128, error) {
 	sign *= signMul
 
 	// Compute the result using unsigned arithmetic.
-	res, err := aUnsigned.FMD(bUnsigned, cUnsigned)
+	res, err := aUnsigned.FMD(bUnsigned, cUnsigned, round)
 
 	if err != nil {
 		return Fix128Zero, applySign(err, sign)
@@ -313,7 +313,7 @@ func (x UFix128) Sqrt() (UFix128, error) {
 		// x and 1, so it est will also be between x and 1.
 		quo, rem := div128(xHi, xLo, est)
 
-		if ushouldRound128(rem, est) {
+		if ushouldRound128(quo, rem, est, RoundNearestHalfAway) {
 			quo, _ = add128(quo, raw128Zero, 1)
 		}
 
