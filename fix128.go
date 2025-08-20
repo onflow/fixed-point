@@ -10,30 +10,30 @@ package fixedPoint
 
 // == Comparison Operators ==
 
-// Eq returns true if a and b are equal.
+// Eq returns true if `a` and `b` are equal.
 func (a UFix128) Eq(b UFix128) bool { return isEqual128(raw128(a), raw128(b)) }
 func (a Fix128) Eq(b Fix128) bool   { return isEqual128(raw128(a), raw128(b)) }
 
-// Lt returns true if a is less than b.
+// Lt returns true if `a` is less than `b`
 func (a UFix128) Lt(b UFix128) bool { return ult128(raw128(a), raw128(b)) }
 func (a Fix128) Lt(b Fix128) bool   { return slt128(raw128(a), raw128(b)) }
 
-// Gt returns true if a is greater than b.
+// Gt returns true if `a` is greater than `b`.
 func (a UFix128) Gt(b UFix128) bool { return b.Lt(a) }
 func (a Fix128) Gt(b Fix128) bool   { return b.Lt(a) }
 
-// Lte returns true if a is less than or equal to b.
+// Lte returns true if `a` is less than or equal to `b`.
 func (a UFix128) Lte(b UFix128) bool { return !a.Gt(b) }
 func (a Fix128) Lte(b Fix128) bool   { return !a.Gt(b) }
 
-// Gte returns true if a is greater than or equal to b.
+// Gte returns true if `a` is greater than or equal to `b`.
 func (a UFix128) Gte(b UFix128) bool { return !a.Lt(b) }
 func (a Fix128) Gte(b Fix128) bool   { return !a.Lt(b) }
 
-// IsNeg returns true if a is negative.
+// IsNeg returns true if `a` is negative.
 func (a Fix128) IsNeg() bool { return isNeg128(raw128(a)) }
 
-// Neg returns the additive inverse of a (i.e. -a), or a negative overflow error
+// Neg returns the additive inverse of `a` (i.e. -a), or a negative overflow error
 func (a Fix128) Neg() (Fix128, error) {
 	if a == Fix128Min {
 		// Special case: negating the minimum value will overflow.
@@ -43,13 +43,13 @@ func (a Fix128) Neg() (Fix128, error) {
 	return Fix128(neg128(raw128(a))), nil
 }
 
-// IsZero returns true if a is zero.
+// IsZero returns true if `a` is zero.
 func (a UFix128) IsZero() bool { return isZero128(raw128(a)) }
 func (a Fix128) IsZero() bool  { return isZero128(raw128(a)) }
 
 // == Arithmetic Operators ==
 
-// Add returns the sum of a and b, or an error on overflow.
+// Add returns the sum of `a` and `b`, or an error on overflow.
 func (a UFix128) Add(b UFix128) (UFix128, error) {
 	sum, carry := add128(raw128(a), raw128(b), 0)
 
@@ -60,7 +60,7 @@ func (a UFix128) Add(b UFix128) (UFix128, error) {
 	return UFix128(sum), nil
 }
 
-// Add returns the sum of a and b, or an error on overflow or negative overflow.
+// Add returns the sum of `a` and  `b`, or an error on overflow or negative overflow.
 func (a Fix128) Add(b Fix128) (Fix128, error) {
 	sum, _ := add128(raw128(a), raw128(b), 0)
 
@@ -76,7 +76,7 @@ func (a Fix128) Add(b Fix128) (Fix128, error) {
 	return res, nil
 }
 
-// Sub returns the difference of a and b, or an error on negative overflow.
+// Sub returns the difference of `a` and  `b`, or an error on negative overflow.
 func (a UFix128) Sub(b UFix128) (UFix128, error) {
 	diff, borrow := sub128(raw128(a), raw128(b), 0)
 
@@ -87,7 +87,7 @@ func (a UFix128) Sub(b UFix128) (UFix128, error) {
 	return UFix128(diff), nil
 }
 
-// Sub returns the difference of a and b, or an error on overflow or negative overflow.
+// Sub returns the difference of `a` and  `b`, or an error on overflow or negative overflow.
 func (a Fix128) Sub(b Fix128) (Fix128, error) {
 	diff, _ := sub128(raw128(a), raw128(b), 0)
 
@@ -141,7 +141,7 @@ func (a UFix128) ApplySign(sign int64) (Fix128, error) {
 	}
 }
 
-// Mul returns the product of a and b, or an error on overflow or underflow.
+// Mul returns the product of `a` and  `b`, or an error on overflow or underflow.
 func (a UFix128) Mul(b UFix128) (UFix128, error) {
 	// It might seem strange to implement multiplication in terms of fused multiply-divide,
 	// but it turns out that a simple fixed-point multiplication needs to both
@@ -153,20 +153,20 @@ func (a UFix128) Mul(b UFix128) (UFix128, error) {
 	return a.FMD(b, UFix128One)
 }
 
-// Mul returns the product of a and b, or an error on overflow or underflow.
+// Mul returns the product of `a` and  `b`, or an error on overflow or underflow.
 func (a Fix128) Mul(b Fix128) (Fix128, error) {
 	// Same rationale as above for UFix128.Mul, but even more critical because handling the
 	// signs correctly is ALSO not trivial.
 	return a.FMD(b, Fix128One)
 }
 
-// Div returns the quotient of a and b, or an error on division by zero, overflow, or underflow.
+// Div returns the quotient of `a` and  `b`, or an error on division by zero, overflow, or underflow.
 func (a UFix128) Div(b UFix128) (UFix128, error) {
 	// Same rationale for using FMD as for UFix128.Mul
 	return a.FMD(UFix128One, b)
 }
 
-// Div returns the quotient of a and b, or an error on division by zero, overflow, or underflow.
+// Div returns the quotient of `a` and  `b`, or an error on division by zero, overflow, or underflow.
 func (a Fix128) Div(b Fix128) (Fix128, error) {
 	// Same rationale as above...
 	return a.FMD(Fix128One, b)
@@ -202,7 +202,7 @@ func (a UFix128) FMD(b, c UFix128) (UFix128, error) {
 		}
 	}
 
-	// We can't get here if a == 0 or b == 0 because we checked that first. So,
+	// We can't get here if `a == 0` or `b == 0` because we checked that first. So,
 	// a quotient of 0 means the result is too small to represent, i.e. underflow.
 	// Note that we check this AFTER rounding.
 	if isZero128(quo) {
@@ -212,9 +212,9 @@ func (a UFix128) FMD(b, c UFix128) (UFix128, error) {
 	return UFix128(quo), nil
 }
 
-// FMD returns a*b/c without intermediate rounding, or an error on division by zero, overflow, or underflow.
+// FMD returns `a*b/c` without intermediate rounding, or an error on division by zero, overflow, or underflow.
 func (a Fix128) FMD(b, c Fix128) (Fix128, error) {
-	// Must come before the check for a or b == 0 so we flag 0.0/0.0 as an error.
+	// Must come before the check for `a` or `b` == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
 		return Fix128Zero, ErrDivByZero
 	}
@@ -243,7 +243,7 @@ func (a Fix128) FMD(b, c Fix128) (Fix128, error) {
 	return res.ApplySign(sign)
 }
 
-// Returns the remainder of a divided by b, or an error on division by zero.
+// Mod returns the remainder of `a` divided by  `b`, or an error on division by zero.
 func (a UFix128) Mod(b UFix128) (UFix128, error) {
 	if b.IsZero() {
 		return UFix128Zero, ErrDivByZero
@@ -254,7 +254,7 @@ func (a UFix128) Mod(b UFix128) (UFix128, error) {
 	return UFix128(rem), nil
 }
 
-// Returns the remainder of a divided by b, the result matches the sign of a (as per Go's %
+// Mod returns the remainder of `a` divided by  `b`, the result matches the sign of `a` (as per Go's %
 // operator).
 func (a Fix128) Mod(b Fix128) (Fix128, error) {
 	if b.IsZero() {
@@ -273,26 +273,26 @@ func (a Fix128) Mod(b Fix128) (Fix128, error) {
 	return rem.ApplySign(aSign)
 }
 
-// Sqrt returns the square root of x using Newton-Rhaphson. Note that this
+// Sqrt returns the square root of `a` using Newton-Rhaphson. Note that this
 // method returns an error result for consistency with other methods,
 // but can't actually ever fail...
-func (x UFix128) Sqrt() (UFix128, error) {
-	if x.IsZero() {
+func (a UFix128) Sqrt() (UFix128, error) {
+	if a.IsZero() {
 		return UFix128Zero, nil
 	}
 
-	// Count the number of leading zero bits in x, this is a cheap way of estimating
+	// Count the number of leading zero bits in `a`, this is a cheap way of estimating
 	// the order of magnitude of the input.
-	n := leadingZeroBits128(raw128(x))
+	n := leadingZeroBits128(raw128(a))
 
 	// The loop below needs to start with some kind of estimate for the square root.
 	// The closer it is to correct, the faster the loop will converge. We'll start
 	// with a number that has a number of leading zero bits halfway between the number
-	// of leading zero bits of x and the number of leading zero bits of the fixed-point
+	// of leading zero bits of `a` and the number of leading zero bits of the fixed-point
 	// representation of 1. This will be of the same order of magnitude as the square
 	// root, allowing our Newton-Raphson loop below to converge quickly.
 
-	est := raw128(x)
+	est := raw128(a)
 
 	if n < Fix128OneLeadingZeros {
 		// If the input has fewer leading zeros than FixOne, we'll start with an input
@@ -306,11 +306,11 @@ func (x UFix128) Sqrt() (UFix128, error) {
 	// The inner loop here will frequently divide the input by the current estimate,
 	// so instead of using the Fix128.Div method, we expand the numerator once outside
 	// the loop, and then directly call div128 in the loop.
-	xHi, xLo := mul128(raw128(x), raw128(Fix128One))
+	xHi, xLo := mul128(raw128(a), raw128(Fix128One))
 
 	for {
 		// This division can't fail: est is always a positive value somewhere between
-		// x and 1, so it est will also be between x and 1.
+		// `a` and 1, so it est will also be between `a` and 1.
 		quo, rem := div128(xHi, xLo, est)
 
 		if ushouldRound128(rem, est) {
@@ -373,11 +373,11 @@ func (x UFix128) Sqrt() (UFix128, error) {
 	return UFix128(est), nil
 }
 
-func (x UFix128) Ln() (Fix128, error) {
+func (a UFix128) Ln() (Fix128, error) {
 	// TODO: x192.ln() provides a ton of precision that we don't need, it
 	// would be ideal if we could pass an error limit to it so it could
 	// stop early when we don't need the full precision.
-	res192, err := x.toFix192().ln()
+	res192, err := a.toFix192().ln()
 
 	if err != nil {
 		return Fix128Zero, err
@@ -394,23 +394,23 @@ func (x UFix128) Ln() (Fix128, error) {
 	return res, err
 }
 
-// Exp(x) returns e^x, or an error on overflow or underflow. Note that although the
-// input is a Fix128, the output is a UFix128, since e^x is always positive.
-func (x Fix128) Exp() (UFix128, error) {
-	// If x is 0, return 1.
-	if x.IsZero() {
+// Exp(a) returns `e^a`, or an error on overflow or underflow. Note that although the
+// input is a Fix128, the output is a UFix128, since `e^a` is always positive.
+func (a Fix128) Exp() (UFix128, error) {
+	// If `a` is 0, return 1.
+	if a.IsZero() {
 		return UFix128One, nil
 	}
 
 	// We can quickly check to see if the input will overflow or underflow
-	if x.Gt(maxLn128) {
+	if a.Gt(maxLn128) {
 		return UFix128Zero, ErrOverflow
-	} else if x.Lt(minLn128) {
+	} else if a.Lt(minLn128) {
 		return UFix128Zero, ErrUnderflow
 	}
 
 	// Use the fix192 implementation of Exp
-	res192, err := x.toFix192().exp()
+	res192, err := a.toFix192().exp()
 
 	if err != nil {
 		return UFix128Zero, err
@@ -440,7 +440,7 @@ func (a UFix128) Pow(b Fix128) (UFix128, error) {
 		return UFix128One, nil
 	}
 
-	// a^1 is just a, so we can return it directly.
+	// `a^1` is just `a`, so we can return it directly.
 	if b.Eq(Fix128One) {
 		return a, nil
 	}
@@ -474,15 +474,15 @@ func trigResult128(res192 fix192, err error) (Fix128, error) {
 	return res, nil
 }
 
-func (x Fix128) Sin() (Fix128, error) {
-	x192 := x.toFix192()
+func (a Fix128) Sin() (Fix128, error) {
+	x192 := a.toFix192()
 	res192, err := x192.sin()
 
 	return trigResult128(res192, err)
 }
 
-func (x Fix128) Cos() (Fix128, error) {
-	x192 := x.toFix192()
+func (a Fix128) Cos() (Fix128, error) {
+	x192 := a.toFix192()
 	res192, err := x192.cos()
 
 	return trigResult128(res192, err)

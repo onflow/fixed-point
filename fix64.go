@@ -9,30 +9,30 @@ package fixedPoint
 
 // == Comparison Operators ==
 
-// Eq returns true if a and b are equal.
+// Eq returns true if `a` and `b` are equal.
 func (a UFix64) Eq(b UFix64) bool { return isEqual64(raw64(a), raw64(b)) }
 func (a Fix64) Eq(b Fix64) bool   { return isEqual64(raw64(a), raw64(b)) }
 
-// Lt returns true if a is less than b.
+// Lt returns true if `a` is less than `b`
 func (a UFix64) Lt(b UFix64) bool { return ult64(raw64(a), raw64(b)) }
 func (a Fix64) Lt(b Fix64) bool   { return slt64(raw64(a), raw64(b)) }
 
-// Gt returns true if a is greater than b.
+// Gt returns true if `a` is greater than `b`.
 func (a UFix64) Gt(b UFix64) bool { return b.Lt(a) }
 func (a Fix64) Gt(b Fix64) bool   { return b.Lt(a) }
 
-// Lte returns true if a is less than or equal to b.
+// Lte returns true if `a` is less than or equal to `b`.
 func (a UFix64) Lte(b UFix64) bool { return !a.Gt(b) }
 func (a Fix64) Lte(b Fix64) bool   { return !a.Gt(b) }
 
-// Gte returns true if a is greater than or equal to b.
+// Gte returns true if `a` is greater than or equal to `b`.
 func (a UFix64) Gte(b UFix64) bool { return !a.Lt(b) }
 func (a Fix64) Gte(b Fix64) bool   { return !a.Lt(b) }
 
-// IsNeg returns true if a is negative.
+// IsNeg returns true if `a` is negative.
 func (a Fix64) IsNeg() bool { return isNeg64(raw64(a)) }
 
-// Neg returns the additive inverse of a (i.e. -a), or a negative overflow error
+// Neg returns the additive inverse of `a` (i.e. -a), or a negative overflow error
 func (a Fix64) Neg() (Fix64, error) {
 	if a == Fix64Min {
 		// Special case: negating the minimum value will overflow.
@@ -42,13 +42,13 @@ func (a Fix64) Neg() (Fix64, error) {
 	return Fix64(neg64(raw64(a))), nil
 }
 
-// IsZero returns true if a is zero.
+// IsZero returns true if `a` is zero.
 func (a UFix64) IsZero() bool { return isZero64(raw64(a)) }
 func (a Fix64) IsZero() bool  { return isZero64(raw64(a)) }
 
 // == Arithmetic Operators ==
 
-// Add returns the sum of a and b, or an error on overflow.
+// Add returns the sum of `a` and `b`, or an error on overflow.
 func (a UFix64) Add(b UFix64) (UFix64, error) {
 	sum, carry := add64(raw64(a), raw64(b), 0)
 
@@ -59,7 +59,7 @@ func (a UFix64) Add(b UFix64) (UFix64, error) {
 	return UFix64(sum), nil
 }
 
-// Add returns the sum of a and b, or an error on overflow or negative overflow.
+// Add returns the sum of `a` and  `b`, or an error on overflow or negative overflow.
 func (a Fix64) Add(b Fix64) (Fix64, error) {
 	sum, _ := add64(raw64(a), raw64(b), 0)
 
@@ -75,7 +75,7 @@ func (a Fix64) Add(b Fix64) (Fix64, error) {
 	return res, nil
 }
 
-// Sub returns the difference of a and b, or an error on negative overflow.
+// Sub returns the difference of `a` and  `b`, or an error on negative overflow.
 func (a UFix64) Sub(b UFix64) (UFix64, error) {
 	diff, borrow := sub64(raw64(a), raw64(b), 0)
 
@@ -86,7 +86,7 @@ func (a UFix64) Sub(b UFix64) (UFix64, error) {
 	return UFix64(diff), nil
 }
 
-// Sub returns the difference of a and b, or an error on overflow or negative overflow.
+// Sub returns the difference of `a` and  `b`, or an error on overflow or negative overflow.
 func (a Fix64) Sub(b Fix64) (Fix64, error) {
 	diff, _ := sub64(raw64(a), raw64(b), 0)
 
@@ -140,7 +140,7 @@ func (a UFix64) ApplySign(sign int64) (Fix64, error) {
 	}
 }
 
-// Mul returns the product of a and b, or an error on overflow or underflow.
+// Mul returns the product of `a` and  `b`, or an error on overflow or underflow.
 func (a UFix64) Mul(b UFix64) (UFix64, error) {
 	// It might seem strange to implement multiplication in terms of fused multiply-divide,
 	// but it turns out that a simple fixed-point multiplication needs to both
@@ -152,20 +152,20 @@ func (a UFix64) Mul(b UFix64) (UFix64, error) {
 	return a.FMD(b, UFix64One)
 }
 
-// Mul returns the product of a and b, or an error on overflow or underflow.
+// Mul returns the product of `a` and  `b`, or an error on overflow or underflow.
 func (a Fix64) Mul(b Fix64) (Fix64, error) {
 	// Same rationale as above for UFix64.Mul, but even more critical because handling the
 	// signs correctly is ALSO not trivial.
 	return a.FMD(b, Fix64One)
 }
 
-// Div returns the quotient of a and b, or an error on division by zero, overflow, or underflow.
+// Div returns the quotient of `a` and  `b`, or an error on division by zero, overflow, or underflow.
 func (a UFix64) Div(b UFix64) (UFix64, error) {
 	// Same rationale for using FMD as for UFix64.Mul
 	return a.FMD(UFix64One, b)
 }
 
-// Div returns the quotient of a and b, or an error on division by zero, overflow, or underflow.
+// Div returns the quotient of `a` and  `b`, or an error on division by zero, overflow, or underflow.
 func (a Fix64) Div(b Fix64) (Fix64, error) {
 	// Same rationale as above...
 	return a.FMD(Fix64One, b)
@@ -201,7 +201,7 @@ func (a UFix64) FMD(b, c UFix64) (UFix64, error) {
 		}
 	}
 
-	// We can't get here if a == 0 or b == 0 because we checked that first. So,
+	// We can't get here if `a == 0` or `b == 0` because we checked that first. So,
 	// a quotient of 0 means the result is too small to represent, i.e. underflow.
 	// Note that we check this AFTER rounding.
 	if isZero64(quo) {
@@ -211,9 +211,9 @@ func (a UFix64) FMD(b, c UFix64) (UFix64, error) {
 	return UFix64(quo), nil
 }
 
-// FMD returns a*b/c without intermediate rounding, or an error on division by zero, overflow, or underflow.
+// FMD returns `a*b/c` without intermediate rounding, or an error on division by zero, overflow, or underflow.
 func (a Fix64) FMD(b, c Fix64) (Fix64, error) {
-	// Must come before the check for a or b == 0 so we flag 0.0/0.0 as an error.
+	// Must come before the check for `a` or `b` == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
 		return Fix64Zero, ErrDivByZero
 	}
@@ -242,7 +242,7 @@ func (a Fix64) FMD(b, c Fix64) (Fix64, error) {
 	return res.ApplySign(sign)
 }
 
-// Returns the remainder of a divided by b, or an error on division by zero.
+// Mod returns the remainder of `a` divided by  `b`, or an error on division by zero.
 func (a UFix64) Mod(b UFix64) (UFix64, error) {
 	if b.IsZero() {
 		return UFix64Zero, ErrDivByZero
@@ -253,7 +253,7 @@ func (a UFix64) Mod(b UFix64) (UFix64, error) {
 	return UFix64(rem), nil
 }
 
-// Returns the remainder of a divided by b, the result matches the sign of a (as per Go's %
+// Mod returns the remainder of `a` divided by  `b`, the result matches the sign of `a` (as per Go's %
 // operator).
 func (a Fix64) Mod(b Fix64) (Fix64, error) {
 	if b.IsZero() {
@@ -272,26 +272,26 @@ func (a Fix64) Mod(b Fix64) (Fix64, error) {
 	return rem.ApplySign(aSign)
 }
 
-// Sqrt returns the square root of x using Newton-Rhaphson. Note that this
+// Sqrt returns the square root of `a` using Newton-Rhaphson. Note that this
 // method returns an error result for consistency with other methods,
 // but can't actually ever fail...
-func (x UFix64) Sqrt() (UFix64, error) {
-	if x.IsZero() {
+func (a UFix64) Sqrt() (UFix64, error) {
+	if a.IsZero() {
 		return UFix64Zero, nil
 	}
 
-	// Count the number of leading zero bits in x, this is a cheap way of estimating
+	// Count the number of leading zero bits in `a`, this is a cheap way of estimating
 	// the order of magnitude of the input.
-	n := leadingZeroBits64(raw64(x))
+	n := leadingZeroBits64(raw64(a))
 
 	// The loop below needs to start with some kind of estimate for the square root.
 	// The closer it is to correct, the faster the loop will converge. We'll start
 	// with a number that has a number of leading zero bits halfway between the number
-	// of leading zero bits of x and the number of leading zero bits of the fixed-point
+	// of leading zero bits of `a` and the number of leading zero bits of the fixed-point
 	// representation of 1. This will be of the same order of magnitude as the square
 	// root, allowing our Newton-Raphson loop below to converge quickly.
 
-	est := raw64(x)
+	est := raw64(a)
 
 	if n < Fix64OneLeadingZeros {
 		// If the input has fewer leading zeros than FixOne, we'll start with an input
@@ -305,11 +305,11 @@ func (x UFix64) Sqrt() (UFix64, error) {
 	// The inner loop here will frequently divide the input by the current estimate,
 	// so instead of using the Fix64.Div method, we expand the numerator once outside
 	// the loop, and then directly call div64 in the loop.
-	xHi, xLo := mul64(raw64(x), raw64(Fix64One))
+	xHi, xLo := mul64(raw64(a), raw64(Fix64One))
 
 	for {
 		// This division can't fail: est is always a positive value somewhere between
-		// x and 1, so it est will also be between x and 1.
+		// `a` and 1, so it est will also be between `a` and 1.
 		quo, rem := div64(xHi, xLo, est)
 
 		if ushouldRound64(rem, est) {
@@ -372,11 +372,11 @@ func (x UFix64) Sqrt() (UFix64, error) {
 	return UFix64(est), nil
 }
 
-func (x UFix64) Ln() (Fix64, error) {
+func (a UFix64) Ln() (Fix64, error) {
 	// TODO: x192.ln() provides a ton of precision that we don't need, it
 	// would be ideal if we could pass an error limit to it so it could
 	// stop early when we don't need the full precision.
-	res192, err := x.toFix192().ln()
+	res192, err := a.toFix192().ln()
 
 	if err != nil {
 		return Fix64Zero, err
@@ -393,23 +393,23 @@ func (x UFix64) Ln() (Fix64, error) {
 	return res, err
 }
 
-// Exp(x) returns e^x, or an error on overflow or underflow. Note that although the
-// input is a Fix64, the output is a UFix64, since e^x is always positive.
-func (x Fix64) Exp() (UFix64, error) {
-	// If x is 0, return 1.
-	if x.IsZero() {
+// Exp(a) returns `e^a`, or an error on overflow or underflow. Note that although the
+// input is a Fix64, the output is a UFix64, since `e^a` is always positive.
+func (a Fix64) Exp() (UFix64, error) {
+	// If `a` is 0, return 1.
+	if a.IsZero() {
 		return UFix64One, nil
 	}
 
 	// We can quickly check to see if the input will overflow or underflow
-	if x.Gt(maxLn64) {
+	if a.Gt(maxLn64) {
 		return UFix64Zero, ErrOverflow
-	} else if x.Lt(minLn64) {
+	} else if a.Lt(minLn64) {
 		return UFix64Zero, ErrUnderflow
 	}
 
 	// Use the fix192 implementation of Exp
-	res192, err := x.toFix192().exp()
+	res192, err := a.toFix192().exp()
 
 	if err != nil {
 		return UFix64Zero, err
@@ -439,7 +439,7 @@ func (a UFix64) Pow(b Fix64) (UFix64, error) {
 		return UFix64One, nil
 	}
 
-	// a^1 is just a, so we can return it directly.
+	// `a^1` is just `a`, so we can return it directly.
 	if b.Eq(Fix64One) {
 		return a, nil
 	}
@@ -473,15 +473,15 @@ func trigResult64(res192 fix192, err error) (Fix64, error) {
 	return res, nil
 }
 
-func (x Fix64) Sin() (Fix64, error) {
-	x192 := x.toFix192()
+func (a Fix64) Sin() (Fix64, error) {
+	x192 := a.toFix192()
 	res192, err := x192.sin()
 
 	return trigResult64(res192, err)
 }
 
-func (x Fix64) Cos() (Fix64, error) {
-	x192 := x.toFix192()
+func (a Fix64) Cos() (Fix64, error) {
+	x192 := a.toFix192()
 	res192, err := x192.cos()
 
 	return trigResult64(res192, err)
