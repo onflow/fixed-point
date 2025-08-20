@@ -36,6 +36,8 @@ type ThreeArgTestCase128 struct {
 // from a failing test's log output into this function and then debug it.
 func TestDebugOneArgTestCase128(t *testing.T) {
 
+	t.SkipNow()
+
 	tc := OneArgTestCase128{
 		// A: raw128{0x25c7a, 0xe56142a41836c0be},
 		A:        raw128{0x0000000000000000, 0x0000000000000001},
@@ -86,7 +88,7 @@ func TestDebugOneArgTestCase128(t *testing.T) {
 }
 
 func TestDebugTwoArgTestCase128(t *testing.T) {
-	// t.Skip()
+	t.SkipNow()
 
 	tc := TwoArgTestCase128{
 		A:        raw128{0x000000000000d3c2, 0x1bcecceda1000001},

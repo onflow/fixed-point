@@ -192,7 +192,11 @@ def main():
             elif not result.is_zero() and result.copy_sign(1) < (quanta / 2):
                 err = "Underflow"
             else:
-                result = result.quantize(quanta, rounding='ROUND_HALF_UP')
+                beforeRounding = result
+                result = result.quantize(quanta, rounding='ROUND_DOWN')
+                if result.is_zero() and not beforeRounding.is_zero():
+                    err = "Underflow"
+
         except (ZeroDivisionError, InvalidOperation):
             err = "DivByZero"
         except Overflow:
