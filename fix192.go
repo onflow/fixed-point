@@ -5,7 +5,7 @@ package fixedPoint
 // the bottom 64 bits being an extension of the fractional part for additional precision. Using the
 // 10**24 factor makes converting between the 128-bit types and this type trivial, and without loss
 // of precision. The additional 2**64 factor is very easy to handle because a multiplication or
-// division by 2**64 can be handled just by adding/dropping the last raw64 component.
+// division by 2**64 can be handled just by selecting the appropriate raw64 components.
 type fix192 struct {
 	Hi, Mid, Lo raw64
 }
@@ -88,27 +88,27 @@ func (x Fix128) toFix192() fix192 {
 // Converts a fix192 value to a UFix64 value, returning an error if the value can't be represented
 // in 64 bits (Note: This includes underflow errors for non-zero values that would round to zero
 // when converted, callers should handle ErrUnderflow if they want to treat these values as zero).
-func (x fix192) toUFix64(round RoundingMode) (UFix64, error) {
+func (x fix192) toUFix64() (UFix64, error) {
 	x128, err := x.toUFix128()
 
 	if err != nil {
 		return UFix64Zero, err
 	}
 
-	return x128.ToUFix64(round)
+	return x128.ToUFix64()
 }
 
 // Converts a fix192 value to a Fix64 value, returning an error if the value can't be represented
 // in 64 bits (Note: This includes underflow errors for non-zero values that would round to zero
 // when converted, callers should handle ErrUnderflow if they want to treat these values as zero).
-func (x fix192) toFix64(round RoundingMode) (Fix64, error) {
+func (x fix192) toFix64() (Fix64, error) {
 	x128, err := x.toFix128()
 
 	if err != nil {
 		return Fix64Zero, err
 	}
 
-	return x128.ToFix64(round)
+	return x128.ToFix64()
 }
 
 // Converts a fix192 value to a UFix128 value, returning an error if the value can't be represented
@@ -240,7 +240,7 @@ func (a fix192) umul(b fix192) (fix192, error) {
 	quo.Mid, rem = div64(rem, rawProductLo.Mid, fiveToThe24)
 	quo.Lo, rem = div64(rem, rawProductLo.Lo, fiveToThe24)
 
-	if ushouldRound64(0, rem, fiveToThe24, RoundNearestHalfAway) {
+	if ushouldRound64(rem, fiveToThe24) {
 		quo, _ = add192(quo, fix192Zero, 1)
 	}
 
@@ -561,7 +561,7 @@ func leadingZeroBits192(a fix192) uint64 {
 	}
 }
 
-// A special multiplication function used for Chebyshev polynomials. It makes a number of
+// A special multiplication function that used for Chebyshev polynomials. It makes a number of
 // assumptions that only hold for our specific Chebyshev coefficients:
 //  1. The input x is always positive (accum can be negative).
 //  2. The coefficients are prescaled such that this multiplication can scale down by 2**145 (which
@@ -583,13 +583,25 @@ func (accum fix192) chebyMul(x fix192) fix192 {
 	res, carry2 = add192(res, r3, 0)
 	xhi, _ = add64(xhi, raw64(carry1), carry2)
 
+	if uint64(xhi) >= (1 << 48) {
+		// TODO: Remove this check in production code. We check that this multiplication can't
+		// overflow when we compute the Chebyshev coefficients.
+		panic("xhi overflowed in chebyMul")
+	}
+
 	// Because we threw out the bottom two words above (which effectively divided the result by
 	// 2**128), to scaled down by the expected 2**145, we need to shift the result down by 17 more
 	// bits.
 	res = res.ushiftRight(17)
 	res.Hi |= xhi << 47
 
-	res, _ = res.applySign(aSign)
+	res, err := res.applySign(aSign)
+
+	if err != nil {
+		// TODO: Remove this check in production code. We check that this multiplication can't
+		// overflow when we compute the Chebyshev coefficients.
+		panic("chebyMul: " + err.Error())
+	}
 
 	return res
 }
@@ -722,9 +734,9 @@ func (x fix192) clampAngle() (fix192, int64) {
 		twoPiProd = twoPiProd.add(fix192{0, 0, errorTermHi})
 		res := xUnsigned.sub(twoPiProd)
 
-		// In all of my testing, the q value has been accurate for all inputs, without further
-		// adjustment. However, we computed the value of m by rounding down, so if there IS an
-		// error, it will result in a value for q that is too large by one. In that case, the
+		// In all of my testing, the q value has ended up being accurate for all inputs, without
+		// further adjustment. However, we computed the value of m by rounding down, so if there IS
+		// an error, it will result in a value for q that is too large by one. In that case, the
 		// subtraction would result in a negative value, and we can correct by adding back one
 		// multiple of 2π.
 		if isNeg64(res.Hi) {
@@ -734,15 +746,15 @@ func (x fix192) clampAngle() (fix192, int64) {
 			res, carry = add192(res, clampAngleTwoPi, 0)
 
 			if carry == 0 {
-				// If we do the adjustment correctly, we should be flipping a negative value into a
-				// positive, which would result in the carry flag being set. If that flag isn't set,
-				// then something has gone horribly wrong!
+				// If we do the correct, we should be flipping a negative value into a positive,
+				// which would result in the carry flag being set. If that flag isn't set, then
+				// something has gone horribly wrong!
 				panic("clampAngle: residual adjustment failed")
 			}
 		}
 
-		// res is now scaled down below 2π. If the angle is greater than π, subtract it from 2π to
-		// bring it into the range [0, π] and flip the sign flag.
+		// res is now scaled down below 2π. If the angle is greater than π, subtract it from 2π to bring it
+		// into the range [0, π] and flip the sign flag.
 		if fix192Pi.ult(res) {
 			res = fix192TwoPi.sub(res)
 			sign *= -1
@@ -781,3 +793,156 @@ func mul192by64(a fix192, b raw64) (xhi, hi, mid, lo raw64) {
 
 	return
 }
+
+func div256by64(xhi, hi, mid, lo raw64, y raw64) (quo fix192, rem raw64) {
+	quo.Hi, rem = div64(xhi, hi, y)
+	quo.Mid, rem = div64(rem, mid, y)
+	quo.Lo, rem = div64(rem, lo, y)
+
+	return quo, rem
+}
+
+// func (x fix192) tan() (fix192, error) {
+// 	// tan(x) = sin(x) / cos(x)
+// 	// We don't want to just call the sin() and cos() methods directly since we will
+// 	// just double-up the call to clampAngle().
+
+// 	// Normalize the input angle to the range [0, π]
+// 	clampedX, sign := x.clampAngle()
+
+// 	if clampedX.lt(fix192_old{0, raw128{0x1000000000000000, 0}}) {
+// 		// If the value is less than 1/8, we can direcly use our chebyTan() calculation
+// 		res := clampedX.f.chebyTan()
+// 		return res.applySign(sign)
+// 	}
+
+// 	var y fix192_old
+
+// 	if clampedX.eq(fix192HalfPi) {
+// 		// In practice, this will probably never happen since the input types have too little precision
+// 		// to _exactly equal_ π/2 at fix192 precision. However! We handle it just in case...
+// 		return fix192_old{}, ErrOverflow
+// 	} else if clampedX.lt(fix192HalfPi) {
+// 		// This y value will be passed to sin() to compute cos(x), unless we are close enough to π/2
+// 		// to use the chebyTan() method.
+// 		y = fix192HalfPi.sub(clampedX)
+
+// 		// See if x is close enough to π/2 that we can use the tan(π/2 - x) identity.
+// 		if y.lt(fix192_old{0, raw128{0x1000000000000000, 0}}) {
+// 			// tan(π/2 - x) = 1 / tan(x)
+// 			// We compute tan(x) using the chebyTan() method, and then take the inverse.
+// 			inverseTan := y.f.chebyTan()
+// 			res, err := inverseTan.f.inverse()
+
+// 			if err != nil {
+// 				if sign < 0 {
+// 					return fix192_old{}, ErrNegOverflow
+// 				} else {
+// 					return fix192_old{}, ErrOverflow
+// 				}
+// 			}
+
+// 			return res.applySign(sign)
+// 		}
+// 	} else {
+// 		// The input is greater than π/2, see if it's close enough to use the chebyTan() method.
+// 		if isEqual64(clampedX.i, fix192HalfPi.i) {
+// 			// We don't bother doing the subtraction if the integer parts aren't equal...
+// 			halfPiDiff, _ := sub128(clampedX.f, fix192HalfPi.f, 0)
+
+// 			if halfPiDiff.Hi <= 0x1000000000000000 {
+// 				inverseTan := halfPiDiff.chebyTan()
+// 				// tan(x) = -tan(π/2 - x)
+// 				sign *= -1
+// 				res, err := inverseTan.f.inverse()
+
+// 				if err != nil {
+// 					if sign < 0 {
+// 						return fix192_old{}, ErrNegOverflow
+// 					} else {
+// 						return fix192_old{}, ErrOverflow
+// 					}
+// 				}
+
+// 				return res.applySign(sign)
+// 			}
+// 		}
+
+// 		// if the input is not close enough to π/2, we'll need to compute
+// 		// cos(x) = -sin(3π/2 − x)
+// 		y = fix192ThreeHalfPi.sub(clampedX)
+// 		sign *= -1
+// 	}
+
+// 	sinX := clampedX.chebySin()
+// 	cosX := y.chebySin()
+
+// 	if cosX.i == 1 {
+// 		// If cosX is 1, we can just return sinX as the result.
+// 		return sinX.applySign(sign)
+// 	} else if isZero128(cosX.f) || isIota128(cosX.f) {
+// 		// If cosX is zero or iota, we treat it as overflow
+// 		if sign < 0 {
+// 			return fix192_old{}, ErrNegOverflow
+// 		} else {
+// 			return fix192_old{}, ErrOverflow
+// 		}
+// 	} else {
+// 		// Divide the result, if cos is small, we scale up both the numerator and denominator
+// 		// to get more precision. (Note that the largest possible value for sinX is 1, so we
+// 		// can scale it up by 2^63 without overflowing.)
+// 		shift := leadingZeroBits64(raw64(cosX.f.Hi))
+// 		if shift > 63 {
+// 			shift = 63
+// 		}
+
+// 		sinX = sinX.shiftLeft(shift)
+// 		cosX = cosX.shiftLeft(shift)
+
+// 		// We know have a 192-bit numerator for sin, and a 128-bit denominator for cos.
+// 		// Remember, though, that sinX and cosX are the true values each multiplied by 2**128
+// 		// (and the extra shift). So if we just divide them, we'll get the result _as an integer_,
+// 		// which is a lot less precision that we'd like! So, we do two divisions. A division of
+// 		// to get the integer part, and then a second division (using the remainder) to get the fractional part.
+// 		//
+// 		// Note this division can only overflow if the high part of the numerator is greater than or equal to the
+// 		// denominator. Since the largest value of sinX.i is 1, this can only happen if cosX.f is that or equal to 1.
+// 		// (i.e. isIota128(cosX.f) or isZero128(cosX.f)). We checked for this earlier and returned an error.
+
+// 		quoHi, rem := div128(raw128{0, sinX.i}, sinX.f, cosX.f)
+// 		quoLo, _ := div128(rem, raw128Zero, cosX.f)
+
+// 		res := fix192_old{i: quoHi.Lo, f: quoLo}
+
+// 		return res.applySign(sign)
+// 	}
+// }
+
+// // Computes the geometric inverse of a fractional value (1/x). Uses
+// // Newton-Raphson reciprocal iteration.
+// func (x raw128) inverse() (fix192_old, error) {
+
+// 	// NOTE: Returns 128 if x == 0
+// 	fracZeros := leadingZeroBits128(x)
+
+// 	if fracZeros >= 63 {
+// 		// If the input is less than 2^-63, we can't represent it as a fix192 value.
+// 		return fix192_old{}, ErrOverflow
+// 	}
+
+// 	// We use the following recursive formula to compute the inverse:
+// 	// rₙ₊₁ = rₙ (2 - x·rₙ)
+
+// 	// We start our estimate with a value that is 2^fracZeros, which is the
+// 	// largest power of two that is less than or equal to 1/x. This ensures
+// 	// our first estimate is on the same order of magnitude as the final result.
+// 	two := fix192_old{2, raw128Zero}
+// 	est := fix192_old{raw64(1 << fracZeros), raw128Zero}
+
+// 	for i := 0; i < 8; i++ {
+// 		prod := est.mulByFraction(x)
+// 		est, _ = est.umul(two.sub(prod))
+// 	}
+
+// 	return est, nil
+// }

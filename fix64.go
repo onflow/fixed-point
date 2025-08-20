@@ -141,7 +141,7 @@ func (a UFix64) ApplySign(sign int64) (Fix64, error) {
 }
 
 // Mul returns the product of `a` and  `b`, or an error on overflow or underflow.
-func (a UFix64) Mul(b UFix64, round RoundingMode) (UFix64, error) {
+func (a UFix64) Mul(b UFix64) (UFix64, error) {
 	// It might seem strange to implement multiplication in terms of fused multiply-divide,
 	// but it turns out that a simple fixed-point multiplication needs to both
 	// multiply and divide anyway. (Multiply the inputs, and then divide by the scale factor.)
@@ -149,30 +149,30 @@ func (a UFix64) Mul(b UFix64, round RoundingMode) (UFix64, error) {
 	// Additionally, the logic for handling rounding is REALLY not trivial, so
 	// having that in one location is a big win. In the end, the only real cost
 	// is the overhead of an extra function call, which might be inlined anyway.
-	return a.FMD(b, UFix64One, round)
+	return a.FMD(b, UFix64One)
 }
 
 // Mul returns the product of `a` and  `b`, or an error on overflow or underflow.
-func (a Fix64) Mul(b Fix64, round RoundingMode) (Fix64, error) {
+func (a Fix64) Mul(b Fix64) (Fix64, error) {
 	// Same rationale as above for UFix64.Mul, but even more critical because handling the
 	// signs correctly is ALSO not trivial.
-	return a.FMD(b, Fix64One, round)
+	return a.FMD(b, Fix64One)
 }
 
 // Div returns the quotient of `a` and  `b`, or an error on division by zero, overflow, or underflow.
-func (a UFix64) Div(b UFix64, round RoundingMode) (UFix64, error) {
+func (a UFix64) Div(b UFix64) (UFix64, error) {
 	// Same rationale for using FMD as for UFix64.Mul
-	return a.FMD(UFix64One, b, round)
+	return a.FMD(UFix64One, b)
 }
 
 // Div returns the quotient of `a` and  `b`, or an error on division by zero, overflow, or underflow.
-func (a Fix64) Div(b Fix64, round RoundingMode) (Fix64, error) {
+func (a Fix64) Div(b Fix64) (Fix64, error) {
 	// Same rationale as above...
-	return a.FMD(Fix64One, b, round)
+	return a.FMD(Fix64One, b)
 }
 
 // FMD returns a*b/c without intermediate rounding, or an error on division by zero, overflow, or underflow.
-func (a UFix64) FMD(b, c UFix64, round RoundingMode) (UFix64, error) {
+func (a UFix64) FMD(b, c UFix64) (UFix64, error) {
 	// Must come before the check for a or b == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
 		return UFix64Zero, ErrDivByZero
@@ -191,7 +191,7 @@ func (a UFix64) FMD(b, c UFix64, round RoundingMode) (UFix64, error) {
 
 	quo, rem := div64(hi, lo, raw64(c))
 
-	if ushouldRound64(quo, rem, raw64(c), round) {
+	if ushouldRound64(rem, raw64(c)) {
 		var carry uint64
 		quo, carry = add64(quo, raw64Zero, 1)
 
@@ -212,7 +212,7 @@ func (a UFix64) FMD(b, c UFix64, round RoundingMode) (UFix64, error) {
 }
 
 // FMD returns `a*b/c` without intermediate rounding, or an error on division by zero, overflow, or underflow.
-func (a Fix64) FMD(b, c Fix64, round RoundingMode) (Fix64, error) {
+func (a Fix64) FMD(b, c Fix64) (Fix64, error) {
 	// Must come before the check for `a` or `b` == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
 		return Fix64Zero, ErrDivByZero
@@ -233,7 +233,7 @@ func (a Fix64) FMD(b, c Fix64, round RoundingMode) (Fix64, error) {
 	sign *= signMul
 
 	// Compute the result using unsigned arithmetic.
-	res, err := aUnsigned.FMD(bUnsigned, cUnsigned, round)
+	res, err := aUnsigned.FMD(bUnsigned, cUnsigned)
 
 	if err != nil {
 		return Fix64Zero, applySign(err, sign)
@@ -312,7 +312,7 @@ func (a UFix64) Sqrt() (UFix64, error) {
 		// `a` and 1, so it est will also be between `a` and 1.
 		quo, rem := div64(xHi, xLo, est)
 
-		if ushouldRound64(quo, rem, est, RoundNearestHalfAway) {
+		if ushouldRound64(rem, est) {
 			quo, _ = add64(quo, raw64Zero, 1)
 		}
 
@@ -382,7 +382,7 @@ func (a UFix64) Ln() (Fix64, error) {
 		return Fix64Zero, err
 	}
 
-	res, err := res192.toFix64(RoundNearestHalfAway)
+	res, err := res192.toFix64()
 
 	// TODO: Should this catch underflow?
 	if err == ErrUnderflow {
@@ -415,7 +415,7 @@ func (a Fix64) Exp() (UFix64, error) {
 		return UFix64Zero, err
 	}
 
-	return res192.toUFix64(RoundNearestHalfAway)
+	return res192.toUFix64()
 }
 
 func (a UFix64) Pow(b Fix64) (UFix64, error) {
@@ -453,7 +453,7 @@ func (a UFix64) Pow(b Fix64) (UFix64, error) {
 		return UFix64Zero, err
 	}
 
-	return res192.toUFix64(RoundNearestHalfAway)
+	return res192.toUFix64()
 }
 
 func trigResult64(res192 fix192, err error) (Fix64, error) {
@@ -461,7 +461,7 @@ func trigResult64(res192 fix192, err error) (Fix64, error) {
 		return Fix64Zero, err
 	}
 
-	res, err := res192.toFix64(RoundNearestHalfAway)
+	res, err := res192.toFix64()
 
 	if err == ErrUnderflow {
 		// For trig underflows, we just return 0.

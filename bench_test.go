@@ -42,7 +42,7 @@ func BenchmarkMulUFix64(b *testing.B) {
 	a := UFix64(123456789123456789)
 	c := UFix64(123456789)
 	for i := 0; i < b.N; i++ {
-		_, _ = a.Mul(c, RoundTowardZero)
+		_, _ = a.Mul(c)
 	}
 }
 
@@ -63,7 +63,7 @@ func BenchmarkMulUFix128(b *testing.B) {
 	a := UFix128{123456789123456789, 12345679123456789}
 	c := UFix128{123456789, 12345678912345689}
 	for i := 0; i < b.N; i++ {
-		_, _ = a.Mul(c, RoundTowardZero)
+		_, _ = a.Mul(c)
 	}
 }
 
@@ -79,7 +79,7 @@ func BenchmarkDivUFix64(b *testing.B) {
 	a := UFix64(123456789987654321)
 	c := UFix64(123456789123456789)
 	for i := 0; i < b.N; i++ {
-		_, _ = a.Div(c, RoundTowardZero)
+		_, _ = a.Div(c)
 	}
 }
 
@@ -101,7 +101,7 @@ func BenchmarkFMDUFix64(b *testing.B) {
 	c := UFix64(987654321)
 	d := UFix64(55555555)
 	for i := 0; i < b.N; i++ {
-		_, _ = a.FMD(c, d, RoundNearestHalfAway)
+		_, _ = a.FMD(c, d)
 	}
 }
 
