@@ -259,7 +259,7 @@ def main():
             result = Decimal(0)
 
         hexValues = map(formatFunc, values)
-        print(f'({', '.join(hexValues)}, {formatFunc(result)}, {err}, "{comment}")')
+        print(f'({", ".join(hexValues)}, {formatFunc(result)}, {err}, "{comment}")')
 
 if __name__ == "__main__":
     main()

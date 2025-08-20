@@ -189,17 +189,18 @@ func (a UFix64) FMD(b, c UFix64) (UFix64, error) {
 		return UFix64Zero, ErrOverflow
 	}
 
-	quo, rem := div64(hi, lo, raw64(c))
+	// Divide and truncate the result to fit the bit-length, by ignoring the remainder.
+	quo, _ := div64(hi, lo, raw64(c))
 
-	if ushouldRound64(rem, raw64(c)) {
-		var carry uint64
-		quo, carry = add64(quo, raw64Zero, 1)
-
-		// Make sure we don't "round up" to a value outside of the range of UFix64!
-		if carry != 0 {
-			return UFix64Zero, ErrOverflow
-		}
-	}
+	//if ushouldRound64(rem, raw64(c)) {
+	//	var carry uint64
+	//	quo, carry = add64(quo, raw64Zero, 1)
+	//
+	//	// Make sure we don't "round up" to a value outside of the range of UFix64!
+	//	if carry != 0 {
+	//		return UFix64Zero, ErrOverflow
+	//	}
+	//}
 
 	// We can't get here if `a == 0` or `b == 0` because we checked that first. So,
 	// a quotient of 0 means the result is too small to represent, i.e. underflow.
