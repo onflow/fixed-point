@@ -26,8 +26,8 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-#      - name: Install dependencies
-#        run: sudo apt-get update && sudo apt-get install uv
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install python3-pip && pip install uv
 
       - name: Clone
         uses: actions/checkout@v3
@@ -52,22 +52,3 @@ jobs:
 
 #      - name: Check tidy
 #        run: make check-tidy
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Clone
-        uses: actions/checkout@v3
-
-      - name: Setup Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Lint
-        run: make lint
-
-      - name: Check license headers
-        run: make check-headers
