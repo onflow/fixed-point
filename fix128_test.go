@@ -1,3 +1,19 @@
+/*
+ * Copyright Flow Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package fixedPoint
 
 import (
@@ -35,6 +51,8 @@ type ThreeArgTestCase128 struct {
 // A useful function to debug a specific test case. You can just copy/paste the test case values
 // from a failing test's log output into this function and then debug it.
 func TestDebugOneArgTestCase128(t *testing.T) {
+
+	t.Parallel()
 
 	tc := OneArgTestCase128{
 		// A: raw128{0x25c7a, 0xe56142a41836c0be},
@@ -87,6 +105,8 @@ func TestDebugOneArgTestCase128(t *testing.T) {
 
 func TestDebugTwoArgTestCase128(t *testing.T) {
 	// t.Skip()
+
+	t.Parallel()
 
 	tc := TwoArgTestCase128{
 		A:        raw128{0x000000000000d3c2, 0x1bcecceda0ffffff},

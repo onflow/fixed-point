@@ -1,3 +1,7 @@
-go.sum
 .DS_Store
 __pycache__/
+
+# IDE related files
+.idea
+.vscode
+.git
