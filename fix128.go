@@ -60,7 +60,7 @@ func (a UFix128) Add(b UFix128) (UFix128, error) {
 	return UFix128(sum), nil
 }
 
-// Add returns the sum of `a` and  `b`, or an error on overflow or negative overflow.
+// Add returns the sum of `a` and `b`, or an error on overflow or negative overflow.
 func (a Fix128) Add(b Fix128) (Fix128, error) {
 	sum, _ := add128(raw128(a), raw128(b), 0)
 
@@ -76,7 +76,7 @@ func (a Fix128) Add(b Fix128) (Fix128, error) {
 	return res, nil
 }
 
-// Sub returns the difference of `a` and  `b`, or an error on negative overflow.
+// Sub returns the difference of `a` and `b`, or an error on negative overflow.
 func (a UFix128) Sub(b UFix128) (UFix128, error) {
 	diff, borrow := sub128(raw128(a), raw128(b), 0)
 
@@ -87,7 +87,7 @@ func (a UFix128) Sub(b UFix128) (UFix128, error) {
 	return UFix128(diff), nil
 }
 
-// Sub returns the difference of `a` and  `b`, or an error on overflow or negative overflow.
+// Sub returns the difference of `a` and `b`, or an error on overflow or negative overflow.
 func (a Fix128) Sub(b Fix128) (Fix128, error) {
 	diff, _ := sub128(raw128(a), raw128(b), 0)
 
@@ -106,7 +106,7 @@ func (a Fix128) Sub(b Fix128) (Fix128, error) {
 	return res, nil
 }
 
-// Abs returns the absolute value of a as an unsigned value, with a sign value as an int64.
+// Abs returns the absolute value of `a` as an unsigned value, with a sign value as an int64.
 // Note that this method works properly for Fix128Min, which can NOT be represented as a positive Fix128.
 func (a Fix128) Abs() (UFix128, int64) {
 	if a.IsNeg() {
@@ -141,8 +141,8 @@ func (a UFix128) ApplySign(sign int64) (Fix128, error) {
 	}
 }
 
-// Mul returns the product of `a` and  `b`, or an error on overflow or underflow.
-func (a UFix128) Mul(b UFix128) (UFix128, error) {
+// Mul returns the product of `a` and `b`, or an error on overflow or underflow.
+func (a UFix128) Mul(b UFix128, round RoundingMode) (UFix128, error) {
 	// It might seem strange to implement multiplication in terms of fused multiply-divide,
 	// but it turns out that a simple fixed-point multiplication needs to both
 	// multiply and divide anyway. (Multiply the inputs, and then divide by the scale factor.)
@@ -150,30 +150,30 @@ func (a UFix128) Mul(b UFix128) (UFix128, error) {
 	// Additionally, the logic for handling rounding is REALLY not trivial, so
 	// having that in one location is a big win. In the end, the only real cost
 	// is the overhead of an extra function call, which might be inlined anyway.
-	return a.FMD(b, UFix128One)
+	return a.FMD(b, UFix128One, round)
 }
 
-// Mul returns the product of `a` and  `b`, or an error on overflow or underflow.
-func (a Fix128) Mul(b Fix128) (Fix128, error) {
+// Mul returns the product of `a` and `b`, or an error on overflow or underflow.
+func (a Fix128) Mul(b Fix128, round RoundingMode) (Fix128, error) {
 	// Same rationale as above for UFix128.Mul, but even more critical because handling the
 	// signs correctly is ALSO not trivial.
-	return a.FMD(b, Fix128One)
+	return a.FMD(b, Fix128One, round)
 }
 
-// Div returns the quotient of `a` and  `b`, or an error on division by zero, overflow, or underflow.
-func (a UFix128) Div(b UFix128) (UFix128, error) {
+// Div returns the quotient of `a` and `b`, or an error on division by zero, overflow, or underflow.
+func (a UFix128) Div(b UFix128, round RoundingMode) (UFix128, error) {
 	// Same rationale for using FMD as for UFix128.Mul
-	return a.FMD(UFix128One, b)
+	return a.FMD(UFix128One, b, round)
 }
 
-// Div returns the quotient of `a` and  `b`, or an error on division by zero, overflow, or underflow.
-func (a Fix128) Div(b Fix128) (Fix128, error) {
+// Div returns the quotient of `a` and `b`, or an error on division by zero, overflow, or underflow.
+func (a Fix128) Div(b Fix128, round RoundingMode) (Fix128, error) {
 	// Same rationale as above...
-	return a.FMD(Fix128One, b)
+	return a.FMD(Fix128One, b, round)
 }
 
 // FMD returns a*b/c without intermediate rounding, or an error on division by zero, overflow, or underflow.
-func (a UFix128) FMD(b, c UFix128) (UFix128, error) {
+func (a UFix128) FMD(b, c UFix128, round RoundingMode) (UFix128, error) {
 	// Must come before the check for a or b == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
 		return UFix128Zero, ErrDivByZero
@@ -192,7 +192,7 @@ func (a UFix128) FMD(b, c UFix128) (UFix128, error) {
 
 	quo, rem := div128(hi, lo, raw128(c))
 
-	if ushouldRound128(rem, raw128(c)) {
+	if ushouldRound128(quo, rem, raw128(c), round) {
 		var carry uint64
 		quo, carry = add128(quo, raw128Zero, 1)
 
@@ -213,7 +213,7 @@ func (a UFix128) FMD(b, c UFix128) (UFix128, error) {
 }
 
 // FMD returns `a*b/c` without intermediate rounding, or an error on division by zero, overflow, or underflow.
-func (a Fix128) FMD(b, c Fix128) (Fix128, error) {
+func (a Fix128) FMD(b, c Fix128, round RoundingMode) (Fix128, error) {
 	// Must come before the check for `a` or `b` == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
 		return Fix128Zero, ErrDivByZero
@@ -234,7 +234,7 @@ func (a Fix128) FMD(b, c Fix128) (Fix128, error) {
 	sign *= signMul
 
 	// Compute the result using unsigned arithmetic.
-	res, err := aUnsigned.FMD(bUnsigned, cUnsigned)
+	res, err := aUnsigned.FMD(bUnsigned, cUnsigned, round)
 
 	if err != nil {
 		return Fix128Zero, applySign(err, sign)
@@ -243,7 +243,7 @@ func (a Fix128) FMD(b, c Fix128) (Fix128, error) {
 	return res.ApplySign(sign)
 }
 
-// Mod returns the remainder of `a` divided by  `b`, or an error on division by zero.
+// Mod returns the remainder of `a` divided by `b`, or an error on division by zero.
 func (a UFix128) Mod(b UFix128) (UFix128, error) {
 	if b.IsZero() {
 		return UFix128Zero, ErrDivByZero
@@ -254,7 +254,7 @@ func (a UFix128) Mod(b UFix128) (UFix128, error) {
 	return UFix128(rem), nil
 }
 
-// Mod returns the remainder of `a` divided by  `b`, the result matches the sign of `a` (as per Go's %
+// Mod returns the remainder of `a` divided by `b`, the result matches the sign of `a` (as per Go's %
 // operator).
 func (a Fix128) Mod(b Fix128) (Fix128, error) {
 	if b.IsZero() {
@@ -276,7 +276,7 @@ func (a Fix128) Mod(b Fix128) (Fix128, error) {
 // Sqrt returns the square root of `a` using Newton-Rhaphson. Note that this
 // method returns an error result for consistency with other methods,
 // but can't actually ever fail...
-func (a UFix128) Sqrt() (UFix128, error) {
+func (a UFix128) Sqrt(round RoundingMode) (UFix128, error) {
 	if a.IsZero() {
 		return UFix128Zero, nil
 	}
@@ -311,11 +311,7 @@ func (a UFix128) Sqrt() (UFix128, error) {
 	for {
 		// This division can't fail: est is always a positive value somewhere between
 		// `a` and 1, so it est will also be between `a` and 1.
-		quo, rem := div128(xHi, xLo, est)
-
-		if ushouldRound128(rem, est) {
-			quo, _ = add128(quo, raw128Zero, 1)
-		}
+		quo, _ := div128(xHi, xLo, est)
 
 		// We take the difference using basic arithmetic, since we know that quo
 		// and est are close to each other and far away from zero, so the difference
@@ -324,6 +320,17 @@ func (a UFix128) Sqrt() (UFix128, error) {
 
 		// If the difference is zero, we've converged cleanly.
 		if isZero128(diff) {
+			if round == RoundAwayFromZero {
+				// The value of est (which equals quo) is the closest value to the true sqrt of x,
+				// but it could be slightly less. If the caller wants us to round up ("away from
+				// zero") we may need to add 1 to the result. Check to see if squaring the
+				// result gives us back the original input, if not, we round the result up.
+				estHi, estLo := mul128(est, est)
+
+				if !isEqual128(estHi, xHi) || !isEqual128(estLo, xLo) {
+					est, _ = add128(est, raw128Zero, 1)
+				}
+			}
 			break
 		}
 
@@ -333,35 +340,52 @@ func (a UFix128) Sqrt() (UFix128, error) {
 		// the original input.
 		if isIota128(diff) {
 			// Diff is positive, so quo is larger than est, and quo^2 will be larger than x
-
-			// Note that ignoring the hi part of this multiplication, and the borrow bit of
-			// the subtraction are both effectively doing math modulo 2^64. Since we know that
-			// the error is less than 2^64, we just ignore those potential "overflows" and
-			// accept that the result will be correct modulo 2^64.
-			_, estLo := mul128(est, est)
-			estError, _ := sub128(xLo, estLo, 0)
-
-			_, quoLo := mul128(quo, quo)
-			quoError, _ := sub128(quoLo, xLo, 0)
-
-			if ult128(quoError, estError) {
-				// If quo has a lower error, use that instead of est.
+			switch round {
+			case RoundAwayFromZero:
+				// If we're rounding up, we want to use quo.
 				est = quo
+			case RoundTowardZero:
+				// If we're rounding down, we want to use est.
+			default:
+				// If we're rounding to nearest, we want to whichever of quo or est that's closer.
+
+				// Note that ignoring the hi part of this multiplication, and the borrow bit of
+				// the subtraction are both effectively doing math modulo 2^64. Since we know that
+				// the error is less than 2^64, we just ignore those potential "overflows" and
+				// accept that the result will be correct modulo 2^64.
+				_, estLo := mul128(est, est)
+				estError, _ := sub128(xLo, estLo, 0)
+
+				_, quoLo := mul128(quo, quo)
+				quoError, _ := sub128(quoLo, xLo, 0)
+
+				if ult128(quoError, estError) {
+					// If quo has a lower error, use that instead of est.
+					est = quo
+				}
 			}
 			break
 		} else if isNegIota128(diff) {
 			// Same logic as above, except diff is negative, so quo is smaller
-			_, estLo := mul128(est, est)
-			estError, _ := sub128(estLo, xLo, 0)
-
-			_, quoLo := mul128(quo, quo)
-			quoError, _ := sub128(xLo, quoLo, 0)
-
-			if ult128(quoError, estError) {
-				// If the estimate is further away, we can just use quo.
+			switch round {
+			case RoundAwayFromZero:
+				// If we're rounding up, we want to use est.
+			case RoundTowardZero:
+				// If we're rounding down, we want to use quo.
 				est = quo
+			default:
+				// If we're rounding to nearest, we want to whichever of quo or est that's closer.
+				_, estLo := mul128(est, est)
+				estError, _ := sub128(estLo, xLo, 0)
+
+				_, quoLo := mul128(quo, quo)
+				quoError, _ := sub128(xLo, quoLo, 0)
+
+				if ult128(quoError, estError) {
+					// If the estimate is further away, we can just use quo.
+					est = quo
+				}
 			}
-			// If quo has a lower error, use that instead of est.
 			break
 		}
 
@@ -383,7 +407,7 @@ func (a UFix128) Ln() (Fix128, error) {
 		return Fix128Zero, err
 	}
 
-	res, err := res192.toFix128()
+	res, err := res192.toFix128(RoundNearestHalfAway)
 
 	// TODO: Should this catch underflow?
 	if err == ErrUnderflow {
@@ -416,7 +440,7 @@ func (a Fix128) Exp() (UFix128, error) {
 		return UFix128Zero, err
 	}
 
-	return res192.toUFix128()
+	return res192.toUFix128(RoundNearestHalfAway)
 }
 
 func (a UFix128) Pow(b Fix128) (UFix128, error) {
@@ -454,7 +478,7 @@ func (a UFix128) Pow(b Fix128) (UFix128, error) {
 		return UFix128Zero, err
 	}
 
-	return res192.toUFix128()
+	return res192.toUFix128(RoundNearestHalfAway)
 }
 
 func trigResult128(res192 fix192, err error) (Fix128, error) {
@@ -462,7 +486,7 @@ func trigResult128(res192 fix192, err error) (Fix128, error) {
 		return Fix128Zero, err
 	}
 
-	res, err := res192.toFix128()
+	res, err := res192.toFix128(RoundNearestHalfAway)
 
 	if err == ErrUnderflow {
 		// For trig underflows, we just return 0.

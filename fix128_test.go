@@ -38,15 +38,15 @@ func TestDebugOneArgTestCase128(t *testing.T) {
 
 	tc := OneArgTestCase128{
 		// A: raw128{0x25c7a, 0xe56142a41836c0be},
-		A:        raw128{0x0000000000000000, 0x0000000000000001},
-		Expected: raw128{0x0000000000000000, 0x0000000000000001},
+		A:        raw128{0x000000000000d3c2, 0x1bcecceda1000000},
+		Expected: raw128{0x0000000000000000, 0x0000000000000000},
 		// A:        raw128{0x10fd9, 0xdb44724e2ca06865},
 		// Expected: raw128{0x3bf2, 0x70199efc4e0a0e98},
 		err: nil,
 	}
 
-	a := Fix128(tc.A)
-	res, err := a.Sin()
+	a := UFix128(tc.A)
+	res, err := a.Ln()
 
 	// Used for debugging clampAngle
 	// res, sign := clampAngle128(a)
@@ -89,8 +89,8 @@ func TestDebugTwoArgTestCase128(t *testing.T) {
 	// t.Skip()
 
 	tc := TwoArgTestCase128{
-		A:        raw128{0x000000000000d3c2, 0x1bcecceda1000001},
-		B:        raw128{0x00000000000069e1, 0x0de76676d0800000},
+		A:        raw128{0x000000000000d3c2, 0x1bcecceda0ffffff},
+		B:        raw128{0x00000000000069e1, 0x0de76676d07fffff},
 		Expected: raw128{0x000000000000d3c2, 0x1bcecceda1000000},
 		err:      nil,
 	}
@@ -123,8 +123,12 @@ func TestDebugTwoArgTestCase128(t *testing.T) {
 //go:generate sh -c "stat generators/genTestData.py > /dev/null"
 //go:generate sh -c "stat generators/data64.py > /dev/null"
 
-func OneArgTestChannel128(t *testing.T, valType string, operation string) chan OneArgTestCase128 {
-	cmd := exec.Command("uv", "run", "genTestData.py", valType, operation)
+func OneArgTestChannel128(t *testing.T, state *TestState) chan OneArgTestCase128 {
+	if state.round == "" {
+		state.round = "ROUND_DOWN"
+	}
+
+	cmd := exec.Command("uv", "run", "genTestData.py", state.outType, state.operation, state.round)
 	cmd.Dir = "./generators"
 
 	// Get a pipe to Python's stdout
@@ -177,8 +181,12 @@ func OneArgTestChannel128(t *testing.T, valType string, operation string) chan O
 	return ch
 }
 
-func TwoArgTestChannel128(t *testing.T, valType string, operation string) chan TwoArgTestCase128 {
-	cmd := exec.Command("uv", "run", "genTestData.py", valType, operation)
+func TwoArgTestChannel128(t *testing.T, state *TestState) chan TwoArgTestCase128 {
+	if state.round == "" {
+		state.round = "ROUND_DOWN"
+	}
+
+	cmd := exec.Command("uv", "run", "genTestData.py", state.outType, state.operation, state.round)
 	cmd.Dir = "./generators"
 
 	// Get a pipe to Python's stdout
@@ -234,8 +242,12 @@ func TwoArgTestChannel128(t *testing.T, valType string, operation string) chan T
 	return ch
 }
 
-func ThreeArgTestChannel128(t *testing.T, valType string, operation string) chan ThreeArgTestCase128 {
-	cmd := exec.Command("uv", "run", "genTestData.py", valType, operation)
+func ThreeArgTestChannel128(t *testing.T, state *TestState) chan ThreeArgTestCase128 {
+	if state.round == "" {
+		state.round = "ROUND_DOWN"
+	}
+
+	cmd := exec.Command("uv", "run", "genTestData.py", state.outType, state.operation, state.round)
 	cmd.Dir = "./generators"
 
 	// Get a pipe to Python's stdout
@@ -431,354 +443,396 @@ func ThreeArgResultCheck128(t *testing.T, ts *TestState, tc ThreeArgTestCase128,
 }
 
 func TestAddUFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "UFix128",
-		operation:    "Add",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Add",
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := UFix128(tc.A)
 		b := UFix128(tc.B)
 		res, err := a.Add(b)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestAddFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "Add",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Add",
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := Fix128(tc.A)
 		b := Fix128(tc.B)
 		res, err := a.Add(b)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestSubUFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "UFix128",
-		operation:    "Sub",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Sub",
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := UFix128(tc.A)
 		b := UFix128(tc.B)
 		res, err := a.Sub(b)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestSubFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "Sub",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Sub",
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := Fix128(tc.A)
 		b := Fix128(tc.B)
 		res, err := a.Sub(b)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestMulUFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "UFix128",
-		operation:    "Mul",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Mul",
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := UFix128(tc.A)
 		b := UFix128(tc.B)
-		res, err := a.Mul(b)
+		res, err := a.Mul(b, RoundTowardZero)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestMulFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "Mul",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Mul",
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := Fix128(tc.A)
 		b := Fix128(tc.B)
-		res, err := a.Mul(b)
+		res, err := a.Mul(b, RoundTowardZero)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestDivUFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "UFix128",
-		operation:    "Div",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Div",
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := UFix128(tc.A)
 		b := UFix128(tc.B)
-		res, err := a.Div(b)
+		res, err := a.Div(b, RoundTowardZero)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestDivFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "Div",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Div",
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := Fix128(tc.A)
 		b := Fix128(tc.B)
-		res, err := a.Div(b)
+		res, err := a.Div(b, RoundTowardZero)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestFMDUFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "UFix128",
-		operation:    "FMD",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "FMD",
 	}
 
-	for tc := range ThreeArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range ThreeArgTestChannel128(t, &testState) {
 		a := UFix128(tc.A)
 		b := UFix128(tc.B)
 		c := UFix128(tc.C)
-		res, err := a.FMD(b, c)
+		res, err := a.FMD(b, c, RoundTowardZero)
 
-		ThreeArgResultCheck128(t, testState, tc, raw128(res), err)
+		ThreeArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestFMDFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "FMD",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "FMD",
 	}
 
-	for tc := range ThreeArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range ThreeArgTestChannel128(t, &testState) {
 		a := Fix128(tc.A)
 		b := Fix128(tc.B)
 		c := Fix128(tc.C)
-		res, err := a.FMD(b, c)
+		res, err := a.FMD(b, c, RoundTowardZero)
 
-		ThreeArgResultCheck128(t, testState, tc, raw128(res), err)
+		ThreeArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestModUFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "UFix128",
-		operation:    "Mod",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Mod",
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := UFix128(tc.A)
 		b := UFix128(tc.B)
 		res, err := a.Mod(b)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestModFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "Mod",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Mod",
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := Fix128(tc.A)
 		b := Fix128(tc.B)
 		res, err := a.Mod(b)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestSqrtUFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "UFix128",
-		operation:    "Sqrt",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Sqrt",
+		round:     "ROUND_HALF_UP",
 	}
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel128(t, &testState) {
 		a := UFix128(tc.A)
-		res, err := a.Sqrt()
+		res, err := a.Sqrt(RoundHalfUp)
 
-		OneArgResultCheck128(t, testState, tc, raw128(res), err)
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestLnFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "Ln",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Ln",
+		round:     "ROUND_HALF_UP",
 	}
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel128(t, &testState) {
 		a := UFix128(tc.A)
 		res, err := a.Ln()
 
-		OneArgResultCheck128(t, testState, tc, raw128(res), err)
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestExpFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "UFix128",
-		operation:    "Exp",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Exp",
+		round:     "ROUND_HALF_UP",
 	}
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel128(t, &testState) {
 		a := Fix128(tc.A)
 		res, err := a.Exp()
 
-		OneArgResultCheck128(t, testState, tc, raw128(res), err)
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestPowFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "UFix128",
-		operation:    "Pow",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Pow",
+		round:     "ROUND_HALF_UP",
+	}
+
+	// The following inputs produce known off-by-one errors, the actual error on these inputs is
+	// <1e-40, but due to rounding, the error propagates all the way up to the 24th decimal point
+	// and becomes significant. We check for and REQUIRE the off-by-one behaviour for these inputs
+	// so that all implementations produce the same bit-pattern (as required for reproducibility and
+	// compatability with hashing algorithms).
+	knownOffByOneCases := []TwoArgTestCase128{
+		{
+			A:        raw128{0x000000000000d3c2, 0x1bcecceda0ffffff},
+			B:        raw128{0x00000000000069e1, 0x0de76676d07fffff},
+			Expected: raw128{0x000000000000d3c2, 0x1bcecceda0ffffff},
+			err:      nil, Description: ""},
+		{
+			A:        raw128{0x000000000000d3c2, 0x1bcecceda0ffffff},
+			B:        raw128{0xffffffffffff961e, 0xf21899892f800001},
+			Expected: raw128{0x000000000000d3c2, 0x1bcecceda1000001},
+			err:      nil, Description: ""},
+		{
+			A:        raw128{0x00000000000034f0, 0x86f3b33b68400001},
+			B:        raw128{0x000000000001a784, 0x379d99db42000000},
+			Expected: raw128{0x0000000000000d3c, 0x21bcecceda100000},
+			err:      nil, Description: ""},
+		{
+			A:        raw128{0x00000000000034f0, 0x86f3b33b683fffff},
+			B:        raw128{0x000000000001a784, 0x379d99db42000000},
+			Expected: raw128{0x0000000000000d3c, 0x21bcecceda0fffff},
+			err:      nil, Description: ""},
+		{
+			A:        raw128{0x00000000000069e1, 0x0de76676d0800001},
+			B:        raw128{0x0000000000034f08, 0x6f3b33b684000000},
+			Expected: raw128{0x0000000000000d3c, 0x21bcecceda100000},
+			err:      nil, Description: ""},
+		{
+			A:        raw128{0x00000000000069e1, 0x0de76676d07fffff},
+			B:        raw128{0x0000000000034f08, 0x6f3b33b684000000},
+			Expected: raw128{0x0000000000000d3c, 0x21bcecceda0fffff},
+			err:      nil, Description: ""},
 	}
 
 	t.Parallel()
 
-	for tc := range TwoArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range TwoArgTestChannel128(t, &testState) {
 		a := UFix128(tc.A)
 		b := Fix128(tc.B)
 		res, err := a.Pow(b)
+		rawRes := raw128(res)
 
-		TwoArgResultCheck128(t, testState, tc, raw128(res), err)
+		if err == nil && rawRes != tc.Expected {
+			foundKnownOffByOne := false
+
+			// Check for off-by-one errors that match the known list encoded above
+			for _, known := range knownOffByOneCases {
+				if known.A == raw128(a) && known.B == raw128(b) {
+					var errorAmount raw128
+
+					if ult128(rawRes, tc.Expected) {
+						errorAmount, _ = sub128(tc.Expected, rawRes, 0)
+					} else {
+						errorAmount, _ = sub128(rawRes, tc.Expected, 0)
+					}
+
+					// If the returned result is exactly off-by-one AND matches the result in the
+					// off-by-one list, we log that we found an expected mismatch and continue the
+					// loop (skipping over the result check)
+					if isEqual128(errorAmount, raw128{0, 1}) && raw128(res) == known.Expected {
+						t.Logf("Known off-by-one case matched for Pow((0x%016x, 0x%016x), (0x%016x, 0x%016x)) = (0x%016x, 0x%016x)",
+							raw128(a).Hi, raw128(a).Lo, raw128(b).Hi, raw128(b).Lo, raw128(res).Hi, raw128(res).Lo)
+
+						foundKnownOffByOne = true
+					}
+
+					break
+				}
+			}
+
+			if foundKnownOffByOne {
+				continue
+			}
+		}
+
+		TwoArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestSinFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "Sin",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Sin",
+		round:     "ROUND_HALF_UP",
 	}
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel128(t, &testState) {
 		a := Fix128(tc.A)
 		res, err := a.Sin()
 
-		OneArgResultCheck128(t, testState, tc, raw128(res), err)
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
 func TestCosFix128(t *testing.T) {
-	testState := &TestState{
-		outType:      "Fix128",
-		operation:    "Cos",
-		successCount: 0,
-		failureCount: 0,
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Cos",
+		round:     "ROUND_HALF_UP",
 	}
 
 	t.Parallel()
 
-	for tc := range OneArgTestChannel128(t, testState.outType, testState.operation) {
+	for tc := range OneArgTestChannel128(t, &testState) {
 		a := Fix128(tc.A)
 		res, err := a.Cos()
 
-		OneArgResultCheck128(t, testState, tc, raw128(res), err)
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
 	}
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }

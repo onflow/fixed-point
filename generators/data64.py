@@ -5,6 +5,7 @@ from decimal import Decimal
 import re
 from pipe import Pipe
 
+# The "Base Data" is used for as input for all tests. The most common/valuable test cases should sit here.
 BaseData64 = [
     # Simple cases
     ("", "0"),
@@ -50,6 +51,9 @@ BaseData64 = [
     ("", "HalfMax - 0.001"),
 ]
 
+# "Extra Data" is used for additional test cases that are used only for methods with one or two
+# arguments, including these values when testing FMD (which has three arguments) makes those tests
+# take a very long time
 ExtraData64 = [
     # The prime factors of UINT64_MAX are 3, 5, 17, 257, 641, 65537, and 6700417
     # The values below are different subsets of those numbers multipled together to
@@ -159,7 +163,9 @@ ExtraData64 = [
     ("", "946575308.92016459"),
 ]
 
-# Additional inputs used for single-argument methods
+# Additional inputs used for only for single-argument methods (ln(), exp(), sin(), cos(), sqrt())
+# including these values when testing two or three-argument methods makes those tests take far too
+# long
 BonusData64 = [
     # Odd multiples of pi/2, used for testing sin/cos/tan
     ("3/2*pi",  "4.71238898"),

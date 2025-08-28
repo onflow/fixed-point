@@ -22,7 +22,7 @@ func (a Fix64) ToFix128() Fix128 {
 
 // Converts a UFix128 to a UFix64, returns an error if the value can't be represented in UFix64,
 // including overflow and underflow cases.
-func (x UFix128) ToUFix64() (UFix64, error) {
+func (x UFix128) ToUFix64(round RoundingMode) (UFix64, error) {
 	// Return zero immediately when possible.
 	if x.IsZero() {
 		return UFix64Zero, nil
@@ -36,7 +36,7 @@ func (x UFix128) ToUFix64() (UFix64, error) {
 
 	quo, rem := div64(x.Hi, x.Lo, scaleFactor64To128)
 
-	if ushouldRound64(rem, scaleFactor64To128) {
+	if ushouldRound64(quo, rem, scaleFactor64To128, round) {
 		var carry uint64
 		quo, carry = add64(quo, raw64Zero, 1)
 
@@ -58,10 +58,10 @@ func (x UFix128) ToUFix64() (UFix64, error) {
 
 // Converts a Fix128 to a Fix64, returns an error if the value can't be represented in Fix64,
 // including overflow, negative overflow, and underflow cases.
-func (x Fix128) ToFix64() (Fix64, error) {
+func (x Fix128) ToFix64(round RoundingMode) (Fix64, error) {
 	unsignedX, sign := x.Abs()
 
-	res, err := unsignedX.ToUFix64()
+	res, err := unsignedX.ToUFix64(round)
 
 	if err != nil {
 		return Fix64Zero, err
