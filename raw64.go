@@ -76,90 +76,54 @@ func neg64(a raw64) raw64 {
 	return raw64(-int64(a))
 }
 
-func uintMul64(a raw64, b uint64) raw64 {
-	// Perform integer multiplication of a raw64 value by a uint64 value, treating a as an unsigned integer.
-	// Does NOT handle overflow, so only use internally where overflow can't happen.
-	return raw64(uint64(a) * b)
-}
+func ushouldRound64(q, r, b raw64, round RoundingMode) bool {
+	switch round {
+	case RoundTowardZero:
+		return false // Always truncate towards zero, no rounding.
+	case RoundAwayFromZero:
+		return r != 0 // Round away from zero, so if there's any remainder, round up.
+	case RoundNearestHalfAway, RoundNearestHalfEven:
+		// Determing if a particular remainder results in rounding isn't as simple
+		// as just checking if r >= b/2, because dividing b by two *loses precision*.
+		// A more accurate solution would be to multiply the remainder by 2 and compare
+		// it to b, but that can overflow if the remainder is large.
+		//
+		// However, we KNOW the remainder is less than b, and we know that b fits in 64 bits;
+		// if the remainder were so large that multiplying it by 2 would overflow,
+		// then it must also be larger than half b. So, we first check to see if it WOULD
+		// overflow when doubled (in which case it is definitely larger than b/2),
+		// and otherwise we can safely double it and compare it to b.
+		if uint64(r) > 0x7fffffffffffffff {
+			// If r is larger than half the maximum value of a uint64, we clearly need to round up.
+			return true
+		}
 
-func sintMul64(a raw64, b int64) raw64 {
-	// Perform integer multiplication of a raw64 value by a uint64 value, treating a as an signed integer.
-	// Does NOT handle overflow, so only use internally where overflow can't happen.
-	return raw64(int64(a) * b)
-}
+		doubleR := uint64(r) * 2
 
-func ushouldRound64(r, b raw64) bool {
-	// Determing if a particular remainder results in rounding isn't as simple
-	// as just checking if r >= b/2, because dividing b by two *loses precision*.
-	// A more accurate solution would be to multiply the remainder by 2 and compare
-	// it to b, but that can overflow if the remainder is large.
-	//
-	// However, we KNOW the remainder is less than b, and we know that b fits in 64 bits;
-	// if the remainder were so large that multiplying it by 2 would overflow,
-	// then it must also be larger than half b. So, we first check to see if it WOULD
-	// overflow when doubled (in which case it is definitely larger than b/2),
-	// and otherwise we can safely double it and compare it to b.
-	return uint64(r) > 0x7fffffffffffffff || uint64(r)*2 >= uint64(b)
-}
-
-func sshouldRound64(r, b raw64) bool {
-	// For signed types, we CAN just multiply the remainder by 2 and compare it to b;
-	// any signed positive value (and remainders are always positive) can be safely doubled
-	// within the space of an unsigned value.
-	return uint64(r)*2 >= uint64(b)
+		if doubleR > uint64(b) {
+			// The remainder is strictly larger than half b, so we round up.
+			return true
+		} else if doubleR < uint64(b) {
+			// The remainder is strictly smaller than half b, so we round down.
+			return false
+		} else {
+			// If doubleR == b, we have to round away from zero for RoundNearestHalfAway,
+			// and round to the nearest even number for RoundNearestHalfEven.
+			if round == RoundNearestHalfAway {
+				return true
+			} else {
+				return q&1 == 1
+			}
+		}
+	default:
+		panic("unsupported rounding mode")
+	}
 }
 
 func leadingZeroBits64(a raw64) uint64 {
 	// Count the number of leading zero bits in a raw64 value.
 	// This is equivalent to bits.LeadingZeros64
 	return uint64(bits.LeadingZeros64(uint64(a)))
-}
-
-func uintDiv64(a raw64, b uint64) raw64 {
-	// Perform integer division of a raw64 value by a uint64 value, treating a as an unsigned integer.
-	// Rounds half up, doesn't check for division by zero or underflow.
-	q := uint64(a) / b
-	r := uint64(a) % b
-
-	if ushouldRound64(raw64(r), raw64(b)) {
-		// If the remainder is greater than half of b, round up.
-		q++
-	}
-
-	return raw64(q)
-}
-
-func sintDiv64(a raw64, b int64) raw64 {
-	// Perform integer division of a raw64 value by an int64 value, treating a as a signed integer.
-	// Rounds half up, doesn't check for division by zero or underflow.
-	var aUnsigned, bUnsigned uint64
-
-	sign := int64(1)
-	if isNeg64(a) {
-		// If a is negative, we need to adjust the sign.
-		aUnsigned = uint64(-a)
-		sign = -1
-	} else {
-		aUnsigned = uint64(a)
-	}
-
-	if b < 0 {
-		// If b is negative, we need to adjust the sign.
-		bUnsigned = uint64(-b)
-		sign = -sign
-	} else {
-		bUnsigned = uint64(b)
-	}
-
-	q := aUnsigned / bUnsigned
-	r := aUnsigned % bUnsigned
-
-	if sshouldRound64(raw64(r), raw64(b)) {
-		// If the remainder is greater than half of b, round up.
-		q++
-	}
-
-	return raw64(int64(q) * sign)
 }
 
 func isZero64(a raw64) bool {
@@ -209,9 +173,4 @@ func ushiftRight64(a raw64, shift uint64) raw64 {
 func sshiftRight64(a raw64, shift uint64) raw64 {
 	// Shift right by a number of bits, treating it as an signed integer.
 	return raw64(int64(a) >> shift)
-}
-
-func unscaledRaw64(a uint64) raw64 {
-	// Convert a uint64 value to a raw64 value without scaling.
-	return raw64(a)
 }

@@ -182,33 +182,59 @@ func neg128(a raw128) raw128 {
 	return raw128{negHi, negLo}
 }
 
-func ushouldRound128(r, b raw128) bool {
-	// Determing if a particular remainder results in rounding isn't as simple
-	// as just checking if r >= b/2, because dividing b by two *loses precision*.
-	// A more accurate solution would be to multiply the remainder by 2 and compare
-	// it to b, but that can overflow if the remainder is large.
-	//
-	// However, we KNOW the remainder is less than b, and we know that b fits in 128 bits;
-	// if the remainder were so large that multiplying it by 2 would overflow,
-	// then it must also be larger than half b. So, we first check to see if it WOULD
-	// overflow when doubled (in which case it is definitely larger than b/2),
-	// and otherwise we can safely double it and compare it to b.
-	if r.Hi > 0x7fffffffffffffff {
-		// remainder is larger than 2^127, so it is definitely larger than b/2
-		return true
-	} else {
-		twoR := shiftLeft128(r, 1)
-		return !ult128(twoR, b)
+func ushouldRound128(q, r, b raw128, round RoundingMode) bool {
+	switch round {
+	case RoundTowardZero:
+	default:
+		return false // Always truncate towards zero, no rounding.
+	case RoundAwayFromZero:
+		return !isZero128(r) // Round away from zero, so if there's any remainder, round up.
+	case RoundNearestHalfAway:
+	case RoundNearestHalfEven:
+		// Determing if a particular remainder results in rounding isn't as simple
+		// as just checking if r >= b/2, because dividing b by two *loses precision*.
+		// A more accurate solution would be to multiply the remainder by 2 and compare
+		// it to b, but that can overflow if the remainder is large.
+		//
+		// However, we KNOW the remainder is less than b, and we know that b fits in 64 bits;
+		// if the remainder were so large that multiplying it by 2 would overflow,
+		// then it must also be larger than half b. So, we first check to see if it WOULD
+		// overflow when doubled (in which case it is definitely larger than b/2),
+		// and otherwise we can safely double it and compare it to b.
+		if uint64(r.Hi) > 0x7fffffffffffffff {
+			// If r is larger than half the maximum value of a uint64, we clearly need to round up.
+			return true
+		}
+
+		doubleR := shiftLeft128(r, 1)
+
+		if ult128(b, doubleR) {
+			// The remainder is strictly larger than half b, so we round up.
+			return true
+		} else if ult128(doubleR, b) {
+			// The remainder is strictly smaller than half b, so we round down.
+			return false
+		} else {
+			// If doubleR == b, we have to round away from zero for RoundNearestHalfAway,
+			// and round to the nearest even number for RoundNearestHalfEven.
+			if round == RoundNearestHalfAway {
+				return true
+			} else {
+				return q.Lo&1 == 1
+			}
+		}
 	}
+
+	return false
 }
 
-func sshouldRound128(r, b raw128) bool {
-	// For signed types, we CAN just multiply the remainder by 2 and compare it to b;
-	// any signed positive value (and remainders are always positive) can be safely doubled
-	// within the space of an unsigned value.
-	twoR := shiftLeft128(r, 1)
-	return ult128(b, twoR)
-}
+// func sshouldRound128(r, b raw128) bool {
+// 	// For signed types, we CAN just multiply the remainder by 2 and compare it to b;
+// 	// any signed positive value (and remainders are always positive) can be safely doubled
+// 	// within the space of an unsigned value.
+// 	twoR := shiftLeft128(r, 1)
+// 	return ult128(b, twoR)
+// }
 
 func leadingZeroBits128(a raw128) uint64 {
 	// Count the number of leading zero bits in a raw128 value.
