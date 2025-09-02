@@ -53,7 +53,7 @@ func (a Fix128) IsNeg() bool { return isNeg128(raw128(a)) }
 func (a Fix128) Neg() (Fix128, error) {
 	if a == Fix128Min {
 		// Special case: negating the minimum value will overflow.
-		return Fix128Zero, ErrNegOverflow
+		return Fix128Zero, NegativeOverflowError{}
 	}
 
 	return Fix128(neg128(raw128(a))), nil
@@ -70,7 +70,7 @@ func (a UFix128) Add(b UFix128) (UFix128, error) {
 	sum, carry := add128(raw128(a), raw128(b), 0)
 
 	if carry != 0 {
-		return UFix128Zero, ErrOverflow
+		return UFix128Zero, PositiveOverflowError{}
 	}
 
 	return UFix128(sum), nil
@@ -84,9 +84,9 @@ func (a Fix128) Add(b Fix128) (Fix128, error) {
 
 	// Check for overflow by checking the sign bits of the operands and the result.
 	if !a.IsNeg() && !b.IsNeg() && res.IsNeg() {
-		return Fix128Zero, ErrOverflow
+		return Fix128Zero, PositiveOverflowError{}
 	} else if a.IsNeg() && b.IsNeg() && !res.IsNeg() {
-		return Fix128Zero, ErrNegOverflow
+		return Fix128Zero, NegativeOverflowError{}
 	}
 
 	return res, nil
@@ -97,7 +97,7 @@ func (a UFix128) Sub(b UFix128) (UFix128, error) {
 	diff, borrow := sub128(raw128(a), raw128(b), 0)
 
 	if borrow != 0 {
-		return UFix128Zero, ErrNegOverflow
+		return UFix128Zero, NegativeOverflowError{}
 	}
 
 	return UFix128(diff), nil
@@ -114,9 +114,9 @@ func (a Fix128) Sub(b Fix128) (Fix128, error) {
 	// 2. Subtracting a negative from a non-negative results in a negative
 	// Subtracting two, non-zero values with the same sign can't overflow in a signed int64
 	if !a.IsNeg() && b.IsNeg() && res.IsNeg() {
-		return Fix128Zero, ErrOverflow
+		return Fix128Zero, PositiveOverflowError{}
 	} else if a.IsNeg() && !b.IsNeg() && !res.IsNeg() {
-		return Fix128Zero, ErrNegOverflow
+		return Fix128Zero, NegativeOverflowError{}
 	}
 
 	return res, nil
@@ -138,7 +138,7 @@ func (a Fix128) Abs() (UFix128, int64) {
 func (a UFix128) ApplySign(sign int64) (Fix128, error) {
 	if sign == 1 {
 		if a.Gt(UFix128(Fix128Max)) {
-			return Fix128Zero, ErrOverflow
+			return Fix128Zero, PositiveOverflowError{}
 		}
 		return Fix128(a), nil
 	} else {
@@ -150,7 +150,7 @@ func (a UFix128) ApplySign(sign int64) (Fix128, error) {
 			return Fix128Min, nil
 		}
 		if a.Gt(UFix128(Fix128Max)) {
-			return Fix128Zero, ErrNegOverflow
+			return Fix128Zero, NegativeOverflowError{}
 		}
 
 		return Fix128(neg128(raw128(a))), nil
@@ -192,7 +192,7 @@ func (a Fix128) Div(b Fix128, round RoundingMode) (Fix128, error) {
 func (a UFix128) FMD(b, c UFix128, round RoundingMode) (UFix128, error) {
 	// Must come before the check for a or b == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
-		return UFix128Zero, ErrDivByZero
+		return UFix128Zero, DivisionByZeroError{}
 	}
 
 	if a.IsZero() || b.IsZero() {
@@ -203,7 +203,7 @@ func (a UFix128) FMD(b, c UFix128, round RoundingMode) (UFix128, error) {
 
 	// If the hi part is >= the divisor the result can't fit in 64 bits.
 	if UFix128(hi).Gte(c) {
-		return UFix128Zero, ErrOverflow
+		return UFix128Zero, PositiveOverflowError{}
 	}
 
 	quo, rem := div128(hi, lo, raw128(c))
@@ -214,7 +214,7 @@ func (a UFix128) FMD(b, c UFix128, round RoundingMode) (UFix128, error) {
 
 		// Make sure we don't "round up" to a value outside of the range of UFix128!
 		if carry != 0 {
-			return UFix128Zero, ErrOverflow
+			return UFix128Zero, PositiveOverflowError{}
 		}
 	}
 
@@ -222,7 +222,7 @@ func (a UFix128) FMD(b, c UFix128, round RoundingMode) (UFix128, error) {
 	// a quotient of 0 means the result is too small to represent, i.e. underflow.
 	// Note that we check this AFTER rounding.
 	if isZero128(quo) {
-		return UFix128Zero, ErrUnderflow
+		return UFix128Zero, UnderflowError{}
 	}
 
 	return UFix128(quo), nil
@@ -232,7 +232,7 @@ func (a UFix128) FMD(b, c UFix128, round RoundingMode) (UFix128, error) {
 func (a Fix128) FMD(b, c Fix128, round RoundingMode) (Fix128, error) {
 	// Must come before the check for `a` or `b` == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
-		return Fix128Zero, ErrDivByZero
+		return Fix128Zero, DivisionByZeroError{}
 	}
 
 	if a.IsZero() || b.IsZero() {
@@ -262,7 +262,7 @@ func (a Fix128) FMD(b, c Fix128, round RoundingMode) (Fix128, error) {
 // Mod returns the remainder of `a` divided by `b`, or an error on division by zero.
 func (a UFix128) Mod(b UFix128) (UFix128, error) {
 	if b.IsZero() {
-		return UFix128Zero, ErrDivByZero
+		return UFix128Zero, DivisionByZeroError{}
 	}
 
 	rem := mod128(raw128(a), raw128(b))
@@ -274,7 +274,7 @@ func (a UFix128) Mod(b UFix128) (UFix128, error) {
 // operator).
 func (a Fix128) Mod(b Fix128) (Fix128, error) {
 	if b.IsZero() {
-		return Fix128Zero, ErrDivByZero
+		return Fix128Zero, DivisionByZeroError{}
 	}
 
 	aUnsigned, aSign := a.Abs()
@@ -426,7 +426,7 @@ func (a UFix128) Ln() (Fix128, error) {
 	res, err := res192.toFix128(RoundNearestHalfAway)
 
 	// TODO: Should this catch underflow?
-	if err == ErrUnderflow {
+	if _, ok := err.(UnderflowError); ok {
 		// For ln underflows, we just return 0.
 		return Fix128Zero, nil
 	}
@@ -444,9 +444,9 @@ func (a Fix128) Exp() (UFix128, error) {
 
 	// We can quickly check to see if the input will overflow or underflow
 	if a.Gt(maxLn128) {
-		return UFix128Zero, ErrOverflow
+		return UFix128Zero, PositiveOverflowError{}
 	} else if a.Lt(minLn128) {
-		return UFix128Zero, ErrUnderflow
+		return UFix128Zero, UnderflowError{}
 	}
 
 	// Use the fix192 implementation of Exp
@@ -468,7 +468,7 @@ func (a UFix128) Pow(b Fix128) (UFix128, error) {
 	if a.IsZero() {
 		if b.IsNeg() {
 			// 0^negative is undefined, so we return an error.
-			return UFix128Zero, ErrDivByZero // 0^negative is undefined
+			return UFix128Zero, DivisionByZeroError{} // 0^negative is undefined
 		} else {
 			// 0^positive is 0.
 			return UFix128Zero, nil
@@ -504,14 +504,16 @@ func trigResult128(res192 fix192, err error) (Fix128, error) {
 
 	res, err := res192.toFix128(RoundNearestHalfAway)
 
-	if err == ErrUnderflow {
+	switch err.(type) {
+	case nil:
+		// No errors
+		return res, nil
+	case UnderflowError:
 		// For trig underflows, we just return 0.
 		return Fix128Zero, nil
-	} else if err != nil {
+	default:
 		return Fix128Zero, err
 	}
-
-	return res, nil
 }
 
 func (a Fix128) Sin() (Fix128, error) {

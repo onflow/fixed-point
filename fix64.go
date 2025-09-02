@@ -52,7 +52,7 @@ func (a Fix64) IsNeg() bool { return isNeg64(raw64(a)) }
 func (a Fix64) Neg() (Fix64, error) {
 	if a == Fix64Min {
 		// Special case: negating the minimum value will overflow.
-		return Fix64Zero, ErrNegOverflow
+		return Fix64Zero, NegativeOverflowError{}
 	}
 
 	return Fix64(neg64(raw64(a))), nil
@@ -69,7 +69,7 @@ func (a UFix64) Add(b UFix64) (UFix64, error) {
 	sum, carry := add64(raw64(a), raw64(b), 0)
 
 	if carry != 0 {
-		return UFix64Zero, ErrOverflow
+		return UFix64Zero, PositiveOverflowError{}
 	}
 
 	return UFix64(sum), nil
@@ -83,9 +83,9 @@ func (a Fix64) Add(b Fix64) (Fix64, error) {
 
 	// Check for overflow by checking the sign bits of the operands and the result.
 	if !a.IsNeg() && !b.IsNeg() && res.IsNeg() {
-		return Fix64Zero, ErrOverflow
+		return Fix64Zero, PositiveOverflowError{}
 	} else if a.IsNeg() && b.IsNeg() && !res.IsNeg() {
-		return Fix64Zero, ErrNegOverflow
+		return Fix64Zero, NegativeOverflowError{}
 	}
 
 	return res, nil
@@ -96,7 +96,7 @@ func (a UFix64) Sub(b UFix64) (UFix64, error) {
 	diff, borrow := sub64(raw64(a), raw64(b), 0)
 
 	if borrow != 0 {
-		return UFix64Zero, ErrNegOverflow
+		return UFix64Zero, NegativeOverflowError{}
 	}
 
 	return UFix64(diff), nil
@@ -113,9 +113,9 @@ func (a Fix64) Sub(b Fix64) (Fix64, error) {
 	// 2. Subtracting a negative from a non-negative results in a negative
 	// Subtracting two, non-zero values with the same sign can't overflow in a signed int64
 	if !a.IsNeg() && b.IsNeg() && res.IsNeg() {
-		return Fix64Zero, ErrOverflow
+		return Fix64Zero, PositiveOverflowError{}
 	} else if a.IsNeg() && !b.IsNeg() && !res.IsNeg() {
-		return Fix64Zero, ErrNegOverflow
+		return Fix64Zero, NegativeOverflowError{}
 	}
 
 	return res, nil
@@ -137,7 +137,7 @@ func (a Fix64) Abs() (UFix64, int64) {
 func (a UFix64) ApplySign(sign int64) (Fix64, error) {
 	if sign == 1 {
 		if a.Gt(UFix64(Fix64Max)) {
-			return Fix64Zero, ErrOverflow
+			return Fix64Zero, PositiveOverflowError{}
 		}
 		return Fix64(a), nil
 	} else {
@@ -149,7 +149,7 @@ func (a UFix64) ApplySign(sign int64) (Fix64, error) {
 			return Fix64Min, nil
 		}
 		if a.Gt(UFix64(Fix64Max)) {
-			return Fix64Zero, ErrNegOverflow
+			return Fix64Zero, NegativeOverflowError{}
 		}
 
 		return Fix64(neg64(raw64(a))), nil
@@ -191,7 +191,7 @@ func (a Fix64) Div(b Fix64, round RoundingMode) (Fix64, error) {
 func (a UFix64) FMD(b, c UFix64, round RoundingMode) (UFix64, error) {
 	// Must come before the check for a or b == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
-		return UFix64Zero, ErrDivByZero
+		return UFix64Zero, DivisionByZeroError{}
 	}
 
 	if a.IsZero() || b.IsZero() {
@@ -202,7 +202,7 @@ func (a UFix64) FMD(b, c UFix64, round RoundingMode) (UFix64, error) {
 
 	// If the hi part is >= the divisor the result can't fit in 64 bits.
 	if UFix64(hi).Gte(c) {
-		return UFix64Zero, ErrOverflow
+		return UFix64Zero, PositiveOverflowError{}
 	}
 
 	quo, rem := div64(hi, lo, raw64(c))
@@ -213,7 +213,7 @@ func (a UFix64) FMD(b, c UFix64, round RoundingMode) (UFix64, error) {
 
 		// Make sure we don't "round up" to a value outside of the range of UFix64!
 		if carry != 0 {
-			return UFix64Zero, ErrOverflow
+			return UFix64Zero, PositiveOverflowError{}
 		}
 	}
 
@@ -221,7 +221,7 @@ func (a UFix64) FMD(b, c UFix64, round RoundingMode) (UFix64, error) {
 	// a quotient of 0 means the result is too small to represent, i.e. underflow.
 	// Note that we check this AFTER rounding.
 	if isZero64(quo) {
-		return UFix64Zero, ErrUnderflow
+		return UFix64Zero, UnderflowError{}
 	}
 
 	return UFix64(quo), nil
@@ -231,7 +231,7 @@ func (a UFix64) FMD(b, c UFix64, round RoundingMode) (UFix64, error) {
 func (a Fix64) FMD(b, c Fix64, round RoundingMode) (Fix64, error) {
 	// Must come before the check for `a` or `b` == 0 so we flag 0.0/0.0 as an error.
 	if c.IsZero() {
-		return Fix64Zero, ErrDivByZero
+		return Fix64Zero, DivisionByZeroError{}
 	}
 
 	if a.IsZero() || b.IsZero() {
@@ -261,7 +261,7 @@ func (a Fix64) FMD(b, c Fix64, round RoundingMode) (Fix64, error) {
 // Mod returns the remainder of `a` divided by `b`, or an error on division by zero.
 func (a UFix64) Mod(b UFix64) (UFix64, error) {
 	if b.IsZero() {
-		return UFix64Zero, ErrDivByZero
+		return UFix64Zero, DivisionByZeroError{}
 	}
 
 	rem := mod64(raw64(a), raw64(b))
@@ -273,7 +273,7 @@ func (a UFix64) Mod(b UFix64) (UFix64, error) {
 // operator).
 func (a Fix64) Mod(b Fix64) (Fix64, error) {
 	if b.IsZero() {
-		return Fix64Zero, ErrDivByZero
+		return Fix64Zero, DivisionByZeroError{}
 	}
 
 	aUnsigned, aSign := a.Abs()
@@ -425,7 +425,7 @@ func (a UFix64) Ln() (Fix64, error) {
 	res, err := res192.toFix64(RoundNearestHalfAway)
 
 	// TODO: Should this catch underflow?
-	if err == ErrUnderflow {
+	if _, ok := err.(UnderflowError); ok {
 		// For ln underflows, we just return 0.
 		return Fix64Zero, nil
 	}
@@ -443,9 +443,9 @@ func (a Fix64) Exp() (UFix64, error) {
 
 	// We can quickly check to see if the input will overflow or underflow
 	if a.Gt(maxLn64) {
-		return UFix64Zero, ErrOverflow
+		return UFix64Zero, PositiveOverflowError{}
 	} else if a.Lt(minLn64) {
-		return UFix64Zero, ErrUnderflow
+		return UFix64Zero, UnderflowError{}
 	}
 
 	// Use the fix192 implementation of Exp
@@ -467,7 +467,7 @@ func (a UFix64) Pow(b Fix64) (UFix64, error) {
 	if a.IsZero() {
 		if b.IsNeg() {
 			// 0^negative is undefined, so we return an error.
-			return UFix64Zero, ErrDivByZero // 0^negative is undefined
+			return UFix64Zero, DivisionByZeroError{} // 0^negative is undefined
 		} else {
 			// 0^positive is 0.
 			return UFix64Zero, nil
@@ -503,14 +503,16 @@ func trigResult64(res192 fix192, err error) (Fix64, error) {
 
 	res, err := res192.toFix64(RoundNearestHalfAway)
 
-	if err == ErrUnderflow {
+	switch err.(type) {
+	case nil:
+		// No errors
+		return res, nil
+	case UnderflowError:
 		// For trig underflows, we just return 0.
 		return Fix64Zero, nil
-	} else if err != nil {
+	default:
 		return Fix64Zero, err
 	}
-
-	return res, nil
 }
 
 func (a Fix64) Sin() (Fix64, error) {

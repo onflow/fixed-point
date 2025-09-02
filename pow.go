@@ -38,9 +38,9 @@ package fixedPoint
 
 // 	// We can quickly check to see if the input will overflow or underflow
 // 	if x.Gt(maxLn128) {
-// 		return UFix128Zero, ErrOverflow
+// 		return UFix128Zero, PositiveOverflowError{}
 // 	} else if x.Lt(minLn128) {
-// 		return UFix128Zero, ErrUnderflow
+// 		return UFix128Zero, UnderflowError{}
 // 	}
 
 // 	res192, err := x.toFix192().exp()
@@ -98,9 +98,9 @@ package fixedPoint
 
 // 	// We can quickly check to see if the input will overflow or underflow
 // 	if x.Gt(maxLn128) {
-// 		return UFix128Zero, ErrOverflow
+// 		return UFix128Zero, PositiveOverflowError{}
 // 	} else if x.Lt(minLn128) {
-// 		return UFix128Zero, ErrUnderflow
+// 		return UFix128Zero, UnderflowError{}
 // 	}
 
 // 	// Switch to unsigned representation to simplify the logic and give
@@ -164,7 +164,7 @@ package fixedPoint
 // 		// as the divisor will keep the result in the correct scale.
 // 		term, err = term.FMD(seriesInput, seriesScale)
 
-// 		if err == ErrUnderflow {
+// 		if _, ok := err.(UnderflowError); ok {
 // 			// If the term is too small to represent, we can just break out of the loop.
 // 			break
 // 		} else if err != nil {
@@ -233,7 +233,7 @@ package fixedPoint
 // 	if a.IsZero() {
 // 		if b.IsNeg() {
 // 			// 0^negative is undefined, so we return an error.
-// 			return UFix128Zero, ErrDivByZero // 0^negative is undefined
+// 			return UFix128Zero, DivisionByZeroError{} // 0^negative is undefined
 // 		} else {
 // 			// 0^positive is 0.
 // 			return UFix128Zero, nil
@@ -266,11 +266,11 @@ package fixedPoint
 // 		// if ln(a)•b is larger than 27. However, if that is true, then the exp()
 // 		// call below would also overflow, so returning an overflow error here is
 // 		// appropriate.
-// 		return UFix128Zero, ErrOverflow
+// 		return UFix128Zero, PositiveOverflowError{}
 // 	} else if err == ErrNegOverflow {
 // 		// If the product overflows in the negative direction, the exponential
 // 		// would underflow.
-// 		return UFix128Zero, ErrUnderflow
+// 		return UFix128Zero, UnderflowError{}
 // 	}
 
 // 	return prod.Exp()

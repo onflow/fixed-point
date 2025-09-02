@@ -16,20 +16,56 @@
 
 package fixedPoint
 
-import "errors"
+// PositiveOverflowError is reported when the value is positive and has a magnitude that is
+// too large to be represented using the given bit length.
+type PositiveOverflowError struct{}
 
-var (
-	ErrOverflow    = errors.New("fixedPoint: overflow")
-	ErrNegOverflow = errors.New("fixedPoint: negative overflow")
-	ErrUnderflow   = errors.New("fixedPoint: underflow")
-	ErrDivByZero   = errors.New("fixedPoint: division by zero")
-	ErrDomain      = errors.New("fixedPoint: input out of domain")
-)
+var _ error = PositiveOverflowError{}
+
+func (PositiveOverflowError) Error() string {
+	return "overflow"
+}
+
+// NegativeOverflowError is reported when the value is negative and has a magnitude that is
+// too large to be represented using the given bit length.
+type NegativeOverflowError struct{}
+
+var _ error = NegativeOverflowError{}
+
+func (NegativeOverflowError) Error() string {
+	return "negative overflow"
+}
+
+// UnderflowError is reported when the magnitude of the value is too small to be represented
+// using the given bit length.
+type UnderflowError struct{}
+
+var _ error = UnderflowError{}
+
+func (UnderflowError) Error() string {
+	return "underflow"
+}
+
+type DivisionByZeroError struct{}
+
+var _ error = DivisionByZeroError{}
+
+func (DivisionByZeroError) Error() string {
+	return "division by zero"
+}
+
+type OutOfDomainErrorError struct{}
+
+var _ error = OutOfDomainErrorError{}
+
+func (OutOfDomainErrorError) Error() string {
+	return "input out of domain"
+}
 
 func applySign(e error, sign int64) error {
-	if e == ErrOverflow && sign < 0 {
-		return ErrNegOverflow
-	} else {
-		return e
+	if _, isUnderflowErr := e.(PositiveOverflowError); isUnderflowErr && sign < 0 {
+		return NegativeOverflowError{}
 	}
+
+	return e
 }
