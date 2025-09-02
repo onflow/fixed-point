@@ -18,6 +18,7 @@ package fixedPoint
 
 import (
 	"bufio"
+	"errors"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -26,11 +27,11 @@ import (
 
 var errorMap = map[string]error{
 	"None":        nil,
-	"Overflow":    ErrOverflow,
-	"NegOverflow": ErrNegOverflow,
-	"Underflow":   ErrUnderflow,
-	"DivByZero":   ErrDivByZero,
-	"DomainError": ErrDomain,
+	"Overflow":    OverflowError{},
+	"NegOverflow": NegativeOverflowError{},
+	"Underflow":   UnderflowError{},
+	"DivByZero":   DivisionByZeroError{},
+	"DomainError": OutOfDomainErrorError{},
 }
 
 type OneArgTestCase64 struct {
@@ -313,7 +314,7 @@ func OneArgResultCheck64(t *testing.T, ts *TestState, tc OneArgTestCase64, actua
 	success := true
 
 	if tc.err != nil || actualErr != nil {
-		if actualErr != tc.err {
+		if !errors.Is(actualErr, tc.err) {
 			t.Errorf("%s (0x%016x) returned error: %v, want: %v (%s)",
 				ts.operation+ts.outType, tc.A, actualErr, tc.err, tc.Description)
 			success = false
@@ -351,7 +352,7 @@ func TwoArgResultCheck64(t *testing.T, ts *TestState, tc TwoArgTestCase64, actua
 	success := true
 
 	if tc.err != nil || actualErr != nil {
-		if actualErr != tc.err {
+		if !errors.Is(actualErr, tc.err) {
 			t.Errorf("%s (0x%016x, 0x%016x) returned error: %v, want: %v (%s)",
 				ts.operation+ts.outType, tc.A, tc.B, actualErr, tc.err, tc.Description)
 			success = false
@@ -390,7 +391,7 @@ func ThreeArgResultCheck64(t *testing.T, ts *TestState, tc ThreeArgTestCase64, a
 	success := true
 
 	if tc.err != nil || actualErr != nil {
-		if actualErr != tc.err {
+		if !errors.Is(actualErr, tc.err) {
 			t.Errorf("%s (0x%016x, 0x%016x, 0x%016x) returned error: %v, want: %v (%s)",
 				ts.operation+ts.outType, tc.A, tc.B, tc.C, actualErr, tc.err, tc.Description)
 			success = false

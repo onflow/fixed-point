@@ -47,7 +47,7 @@ func (x UFix128) ToUFix64(round RoundingMode) (UFix64, error) {
 	// Fix128 has a larger range than UFix64, so we check to see that this
 	// value will fit in UFix64 after division
 	if !ult64(x.Hi, scaleFactor64To128) {
-		return UFix64Zero, ErrOverflow
+		return UFix64Zero, OverflowError{}
 	}
 
 	quo, rem := div64(x.Hi, x.Lo, scaleFactor64To128)
@@ -58,14 +58,14 @@ func (x UFix128) ToUFix64(round RoundingMode) (UFix64, error) {
 
 		// If there's a carry, the rounding overflowed.
 		if carry != 0 {
-			return UFix64Zero, ErrOverflow
+			return UFix64Zero, OverflowError{}
 		}
 	} else {
 		// If the quotient is zero, the result is an overflow. (We had a fast return
 		// at the top of the file to check for the case where the input was zero to
 		// begin with.)
 		if isZero64(quo) {
-			return UFix64Zero, ErrUnderflow
+			return UFix64Zero, UnderflowError{}
 		}
 	}
 

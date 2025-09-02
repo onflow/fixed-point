@@ -18,6 +18,7 @@ package fixedPoint
 
 import (
 	"bufio"
+	"errors"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -330,7 +331,7 @@ func OneArgResultCheck128(t *testing.T, ts *TestState, tc OneArgTestCase128, act
 	success := true
 
 	if tc.err != nil || actualErr != nil {
-		if actualErr != tc.err {
+		if !errors.Is(actualErr, tc.err) {
 			t.Errorf("%s (0x%016x, 0x%016x) returned error: %v, want: %v (%s)",
 				ts.operation+ts.outType, tc.A.Hi, tc.A.Lo, actualErr, tc.err, tc.Description)
 			success = false
@@ -375,7 +376,7 @@ func TwoArgResultCheck128(t *testing.T, ts *TestState, tc TwoArgTestCase128, act
 	success := true
 
 	if tc.err != nil || actualErr != nil {
-		if actualErr != tc.err {
+		if !errors.Is(actualErr, tc.err) {
 			t.Errorf("%s ((0x%016x, 0x%016x), (0x%016x, 0x%016x)) returned error: %v, want: %v (%s)",
 				ts.operation+ts.outType, tc.A.Hi, tc.A.Lo, tc.B.Hi, tc.B.Lo, actualErr, tc.err, tc.Description)
 			success = false
@@ -420,7 +421,7 @@ func ThreeArgResultCheck128(t *testing.T, ts *TestState, tc ThreeArgTestCase128,
 	success := true
 
 	if tc.err != nil || actualErr != nil {
-		if actualErr != tc.err {
+		if !errors.Is(actualErr, tc.err) {
 			t.Errorf("%s ((0x%016x, 0x%016x), (0x%016x, 0x%016x), (0x%016x, 0x%016x)) returned error: %v, want: %v (%s)",
 				ts.operation+ts.outType, tc.A.Hi, tc.A.Lo, tc.B.Hi, tc.B.Lo, tc.C.Hi, tc.C.Lo, actualErr, tc.err, tc.Description)
 			success = false

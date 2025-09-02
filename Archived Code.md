@@ -22,7 +22,7 @@ func (x fix192) inverse() (fix192, error) {
 	if zeros >= 96 {
 		// It turns out that any value with more than 96 leading zero bits is so small that it's inverse
 		// would overflow the 192-bit fixed-point representation.
-		return fix192{}, ErrOverflow
+		return fix192{}, OverflowError{}
 	}
 
 	// We use the following recursive formula to compute the inverse:

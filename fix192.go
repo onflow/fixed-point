@@ -54,12 +54,12 @@ func (x fix192) applySign(sign int64) (fix192, error) {
 		// If trying to make it negative didn't make it negative, the input is too
 		// large to represent as a negative value.
 		if !isNeg64(x.Hi) {
-			return fix192Zero, ErrNegOverflow
+			return fix192Zero, NegativeOverflowError{}
 		}
 	} else if isNeg64(x.Hi) {
 		// If the input reads as negative but wasn't sign flipped, then the input
 		// is too big to represent as a signed value.
-		return fix192Zero, ErrOverflow
+		return fix192Zero, OverflowError{}
 	}
 
 	return x, nil
@@ -107,7 +107,7 @@ func (x Fix128) toFix192() fix192 {
 
 // Converts a fix192 value to a UFix64 value, returning an error if the value can't be represented
 // in 64 bits (Note: This includes underflow errors for non-zero values that would round to zero
-// when converted, callers should handle ErrUnderflow if they want to treat these values as zero).
+// when converted, callers should handle UnderflowError if they want to treat these values as zero).
 func (x fix192) toUFix64(round RoundingMode) (UFix64, error) {
 	// Return zero immediately when possible.
 	if x.isZero() {
@@ -119,7 +119,7 @@ func (x fix192) toUFix64(round RoundingMode) (UFix64, error) {
 	// between Fix64 and Fix128, since fix192 is just Fix128 with 64 more bits of precision tacked
 	// on
 	if !ult64(x.Hi, scaleFactor64To128) {
-		return UFix64Zero, ErrOverflow
+		return UFix64Zero, OverflowError{}
 	}
 
 	scaledX, _ := div192by64(x.Hi, x.Mid, x.Lo, scaleFactor64To128)
@@ -148,13 +148,13 @@ func (x fix192) toUFix64(round RoundingMode) (UFix64, error) {
 
 	if carry != 0 {
 		// Rounding caused an overflow
-		return UFix64Zero, ErrOverflow
+		return UFix64Zero, OverflowError{}
 	}
 
 	if isZero64(roundedX.Hi) && !isZero64(scaledX.Lo) {
 		// If the high part is zero after rounding, and the original low part was non-zero, we flag
 		// underflow
-		return UFix64Zero, ErrUnderflow
+		return UFix64Zero, UnderflowError{}
 	}
 
 	return UFix64(roundedX.Hi), nil
@@ -162,7 +162,7 @@ func (x fix192) toUFix64(round RoundingMode) (UFix64, error) {
 
 // Converts a fix192 value to a Fix64 value, returning an error if the value can't be represented
 // in 64 bits (Note: This includes underflow errors for non-zero values that would round to zero
-// when converted, callers should handle ErrUnderflow if they want to treat these values as zero).
+// when converted, callers should handle UnderflowError if they want to treat these values as zero).
 func (x fix192) toFix64(round RoundingMode) (Fix64, error) {
 	unsignedX, sign := x.abs()
 
@@ -177,7 +177,7 @@ func (x fix192) toFix64(round RoundingMode) (Fix64, error) {
 
 // Converts a fix192 value to a UFix128 value, returning an error if the value can't be represented
 // in 128 bits (Note: This includes underflow errors for non-zero values that would round to zero
-// when converted, callers should handle ErrUnderflow if they want to treat these values as zero).
+// when converted, callers should handle UnderflowError if they want to treat these values as zero).
 func (x fix192) toUFix128(round RoundingMode) (UFix128, error) {
 	// A value to be added to the input such that when we truncate the result AFTER adding, we
 	// get the correct result as though we rounded.
@@ -200,13 +200,13 @@ func (x fix192) toUFix128(round RoundingMode) (UFix128, error) {
 
 	if carry != 0 {
 		// Rounding caused an overflow
-		return UFix128Zero, ErrOverflow
+		return UFix128Zero, OverflowError{}
 	}
 
 	if isZero64(roundedX.Hi) && isZero64(roundedX.Mid) && !isZero64(x.Lo) {
 		// If the high and mid parts are zero after rounding, and the original low part was
 		// non-zero, we flag underflow
-		return UFix128Zero, ErrUnderflow
+		return UFix128Zero, UnderflowError{}
 	}
 
 	return UFix128{roundedX.Hi, roundedX.Mid}, nil
@@ -214,7 +214,7 @@ func (x fix192) toUFix128(round RoundingMode) (UFix128, error) {
 
 // Converts a fix192 value to a Fix128 value, returning an error if the value can't be represented
 // in 128 bits (Note: This includes underflow errors for non-zero values that would round to zero
-// when converted, callers should handle ErrUnderflow if they want to treat these values as zero).
+// when converted, callers should handle UnderflowError if they want to treat these values as zero).
 func (x fix192) toFix128(round RoundingMode) (Fix128, error) {
 	unsignedX, sign := x.abs()
 
@@ -308,7 +308,7 @@ func (a fix192) umul(b fix192) (fix192, error) {
 	// The final result will overflow unless the top word (rawProductHi.Hi) is zero, and the
 	// second highest word (rawProductHi.Lo) is less than fiveToThe24th.
 	if !isZero64(rawProductHi.Hi) || !ult64(rawProductHi.Lo, fiveToThe24) {
-		return fix192{}, ErrOverflow
+		return fix192{}, OverflowError{}
 	}
 
 	var quo fix192
@@ -437,7 +437,7 @@ func (x fix192) ushiftRight(shift uint64) (res fix192) {
 // SIGNED value.
 func (x fix192) ln() (fix192, error) {
 	if x.isZero() {
-		return fix192Zero, ErrDomain
+		return fix192Zero, OutOfDomainErrorError{}
 	}
 
 	if x.isEqual(fix192One) {
@@ -537,9 +537,9 @@ func (x fix192) exp() (fix192, error) {
 	// either overflows or underflows (since the table covers all possible values within the range
 	// of Fix128)
 	if intPowerIndex < 0 {
-		return fix192Zero, ErrUnderflow
+		return fix192Zero, UnderflowError{}
 	} else if intPowerIndex >= int64(len(expIntPowers)) {
-		return fix192Zero, ErrOverflow
+		return fix192Zero, OverflowError{}
 	}
 
 	res := expIntPowers[intPowerIndex]
@@ -568,18 +568,20 @@ func (a fix192) pow(b fix192) (fix192, error) {
 
 	prod, err := aLn.smul(b)
 
-	if err == ErrUnderflow {
+	switch err.(type) {
+	case nil:
+		// No errors.
+		return prod.exp()
+	case UnderflowError:
 		// If the product is too small, we treat it as zero, and return 1
 		return fix192One, nil
-	} else if err == ErrNegOverflow {
+	case NegativeOverflowError:
 		// If the product overflows negative, the result is too small to represent, so we return an error.
-		return fix192Zero, ErrUnderflow
-	} else if err != nil {
+		return fix192Zero, UnderflowError{}
+	default:
 		// Overflow errors are just overflow errors...
 		return fix192Zero, err
 	}
-
-	return prod.exp()
 }
 
 // Computes the sine of a fix192 value, returns an error for symmetry with other functions, but
