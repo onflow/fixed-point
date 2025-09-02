@@ -70,7 +70,7 @@ func (a UFix128) Add(b UFix128) (UFix128, error) {
 	sum, carry := add128(raw128(a), raw128(b), 0)
 
 	if carry != 0 {
-		return UFix128Zero, OverflowError{}
+		return UFix128Zero, PositiveOverflowError{}
 	}
 
 	return UFix128(sum), nil
@@ -84,7 +84,7 @@ func (a Fix128) Add(b Fix128) (Fix128, error) {
 
 	// Check for overflow by checking the sign bits of the operands and the result.
 	if !a.IsNeg() && !b.IsNeg() && res.IsNeg() {
-		return Fix128Zero, OverflowError{}
+		return Fix128Zero, PositiveOverflowError{}
 	} else if a.IsNeg() && b.IsNeg() && !res.IsNeg() {
 		return Fix128Zero, NegativeOverflowError{}
 	}
@@ -114,7 +114,7 @@ func (a Fix128) Sub(b Fix128) (Fix128, error) {
 	// 2. Subtracting a negative from a non-negative results in a negative
 	// Subtracting two, non-zero values with the same sign can't overflow in a signed int64
 	if !a.IsNeg() && b.IsNeg() && res.IsNeg() {
-		return Fix128Zero, OverflowError{}
+		return Fix128Zero, PositiveOverflowError{}
 	} else if a.IsNeg() && !b.IsNeg() && !res.IsNeg() {
 		return Fix128Zero, NegativeOverflowError{}
 	}
@@ -138,7 +138,7 @@ func (a Fix128) Abs() (UFix128, int64) {
 func (a UFix128) ApplySign(sign int64) (Fix128, error) {
 	if sign == 1 {
 		if a.Gt(UFix128(Fix128Max)) {
-			return Fix128Zero, OverflowError{}
+			return Fix128Zero, PositiveOverflowError{}
 		}
 		return Fix128(a), nil
 	} else {
@@ -203,7 +203,7 @@ func (a UFix128) FMD(b, c UFix128, round RoundingMode) (UFix128, error) {
 
 	// If the hi part is >= the divisor the result can't fit in 64 bits.
 	if UFix128(hi).Gte(c) {
-		return UFix128Zero, OverflowError{}
+		return UFix128Zero, PositiveOverflowError{}
 	}
 
 	quo, rem := div128(hi, lo, raw128(c))
@@ -214,7 +214,7 @@ func (a UFix128) FMD(b, c UFix128, round RoundingMode) (UFix128, error) {
 
 		// Make sure we don't "round up" to a value outside of the range of UFix128!
 		if carry != 0 {
-			return UFix128Zero, OverflowError{}
+			return UFix128Zero, PositiveOverflowError{}
 		}
 	}
 
@@ -444,7 +444,7 @@ func (a Fix128) Exp() (UFix128, error) {
 
 	// We can quickly check to see if the input will overflow or underflow
 	if a.Gt(maxLn128) {
-		return UFix128Zero, OverflowError{}
+		return UFix128Zero, PositiveOverflowError{}
 	} else if a.Lt(minLn128) {
 		return UFix128Zero, UnderflowError{}
 	}

@@ -16,18 +16,18 @@
 
 package fixedPoint
 
-// OverflowError indicates that the value is positive and has a magnitude that is
-// too large to be represented with the given bit length.
-type OverflowError struct{}
+// PositiveOverflowError is reported when the value is positive and has a magnitude that is
+// too large to be represented using the given bit length.
+type PositiveOverflowError struct{}
 
-var _ error = OverflowError{}
+var _ error = PositiveOverflowError{}
 
-func (OverflowError) Error() string {
+func (PositiveOverflowError) Error() string {
 	return "overflow"
 }
 
-// NegativeOverflowError indicates that the value is negative and has a magnitude that is
-// too large to be represented with the given bit length.
+// NegativeOverflowError is reported when the value is negative and has a magnitude that is
+// too large to be represented using the given bit length.
 type NegativeOverflowError struct{}
 
 var _ error = NegativeOverflowError{}
@@ -36,8 +36,8 @@ func (NegativeOverflowError) Error() string {
 	return "negative overflow"
 }
 
-// UnderflowError indicates that the magnitude of the value is too small to be represented
-// with the given bit length.
+// UnderflowError is reported when the magnitude of the value is too small to be represented
+// using the given bit length.
 type UnderflowError struct{}
 
 var _ error = UnderflowError{}
@@ -63,7 +63,7 @@ func (OutOfDomainErrorError) Error() string {
 }
 
 func applySign(e error, sign int64) error {
-	if _, isUnderflowErr := e.(OverflowError); isUnderflowErr && sign < 0 {
+	if _, isUnderflowErr := e.(PositiveOverflowError); isUnderflowErr && sign < 0 {
 		return NegativeOverflowError{}
 	}
 

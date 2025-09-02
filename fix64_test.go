@@ -27,7 +27,7 @@ import (
 
 var errorMap = map[string]error{
 	"None":        nil,
-	"Overflow":    OverflowError{},
+	"Overflow":    PositiveOverflowError{},
 	"NegOverflow": NegativeOverflowError{},
 	"Underflow":   UnderflowError{},
 	"DivByZero":   DivisionByZeroError{},

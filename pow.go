@@ -38,7 +38,7 @@ package fixedPoint
 
 // 	// We can quickly check to see if the input will overflow or underflow
 // 	if x.Gt(maxLn128) {
-// 		return UFix128Zero, OverflowError{}
+// 		return UFix128Zero, PositiveOverflowError{}
 // 	} else if x.Lt(minLn128) {
 // 		return UFix128Zero, UnderflowError{}
 // 	}
@@ -98,7 +98,7 @@ package fixedPoint
 
 // 	// We can quickly check to see if the input will overflow or underflow
 // 	if x.Gt(maxLn128) {
-// 		return UFix128Zero, OverflowError{}
+// 		return UFix128Zero, PositiveOverflowError{}
 // 	} else if x.Lt(minLn128) {
 // 		return UFix128Zero, UnderflowError{}
 // 	}
@@ -266,7 +266,7 @@ package fixedPoint
 // 		// if ln(a)•b is larger than 27. However, if that is true, then the exp()
 // 		// call below would also overflow, so returning an overflow error here is
 // 		// appropriate.
-// 		return UFix128Zero, OverflowError{}
+// 		return UFix128Zero, PositiveOverflowError{}
 // 	} else if err == ErrNegOverflow {
 // 		// If the product overflows in the negative direction, the exponential
 // 		// would underflow.

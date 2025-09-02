@@ -59,7 +59,7 @@ func (a fix192) applySign(sign int64) (fix192, error) {
 	} else if isNeg64(a.Hi) {
 		// If the input reads as negative but wasn't sign flipped, then the input
 		// is too big to represent as a signed value.
-		return fix192Zero, OverflowError{}
+		return fix192Zero, PositiveOverflowError{}
 	}
 
 	return a, nil
@@ -119,7 +119,7 @@ func (a fix192) toUFix64(round RoundingMode) (UFix64, error) {
 	// between Fix64 and Fix128, since fix192 is just Fix128 with 64 more bits of precision tacked
 	// on
 	if !ult64(a.Hi, scaleFactor64To128) {
-		return UFix64Zero, OverflowError{}
+		return UFix64Zero, PositiveOverflowError{}
 	}
 
 	scaledX, _ := div192by64(a.Hi, a.Mid, a.Lo, scaleFactor64To128)
@@ -148,7 +148,7 @@ func (a fix192) toUFix64(round RoundingMode) (UFix64, error) {
 
 	if carry != 0 {
 		// Rounding caused an overflow
-		return UFix64Zero, OverflowError{}
+		return UFix64Zero, PositiveOverflowError{}
 	}
 
 	if isZero64(roundedX.Hi) && !isZero64(scaledX.Lo) {
@@ -200,7 +200,7 @@ func (a fix192) toUFix128(round RoundingMode) (UFix128, error) {
 
 	if carry != 0 {
 		// Rounding caused an overflow
-		return UFix128Zero, OverflowError{}
+		return UFix128Zero, PositiveOverflowError{}
 	}
 
 	if isZero64(roundedX.Hi) && isZero64(roundedX.Mid) && !isZero64(a.Lo) {
@@ -308,7 +308,7 @@ func (a fix192) umul(b fix192) (fix192, error) {
 	// The final result will overflow unless the top word (rawProductHi.Hi) is zero, and the
 	// second-highest word (rawProductHi.Lo) is less than fiveToThe24th.
 	if !isZero64(rawProductHi.Hi) || !ult64(rawProductHi.Lo, fiveToThe24) {
-		return fix192{}, OverflowError{}
+		return fix192{}, PositiveOverflowError{}
 	}
 
 	var quo fix192
@@ -539,7 +539,7 @@ func (a fix192) exp() (fix192, error) {
 	if intPowerIndex < 0 {
 		return fix192Zero, UnderflowError{}
 	} else if intPowerIndex >= int64(len(expIntPowers)) {
-		return fix192Zero, OverflowError{}
+		return fix192Zero, PositiveOverflowError{}
 	}
 
 	res := expIntPowers[intPowerIndex]

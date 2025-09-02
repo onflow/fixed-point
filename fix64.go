@@ -69,7 +69,7 @@ func (a UFix64) Add(b UFix64) (UFix64, error) {
 	sum, carry := add64(raw64(a), raw64(b), 0)
 
 	if carry != 0 {
-		return UFix64Zero, OverflowError{}
+		return UFix64Zero, PositiveOverflowError{}
 	}
 
 	return UFix64(sum), nil
@@ -83,7 +83,7 @@ func (a Fix64) Add(b Fix64) (Fix64, error) {
 
 	// Check for overflow by checking the sign bits of the operands and the result.
 	if !a.IsNeg() && !b.IsNeg() && res.IsNeg() {
-		return Fix64Zero, OverflowError{}
+		return Fix64Zero, PositiveOverflowError{}
 	} else if a.IsNeg() && b.IsNeg() && !res.IsNeg() {
 		return Fix64Zero, NegativeOverflowError{}
 	}
@@ -113,7 +113,7 @@ func (a Fix64) Sub(b Fix64) (Fix64, error) {
 	// 2. Subtracting a negative from a non-negative results in a negative
 	// Subtracting two, non-zero values with the same sign can't overflow in a signed int64
 	if !a.IsNeg() && b.IsNeg() && res.IsNeg() {
-		return Fix64Zero, OverflowError{}
+		return Fix64Zero, PositiveOverflowError{}
 	} else if a.IsNeg() && !b.IsNeg() && !res.IsNeg() {
 		return Fix64Zero, NegativeOverflowError{}
 	}
@@ -137,7 +137,7 @@ func (a Fix64) Abs() (UFix64, int64) {
 func (a UFix64) ApplySign(sign int64) (Fix64, error) {
 	if sign == 1 {
 		if a.Gt(UFix64(Fix64Max)) {
-			return Fix64Zero, OverflowError{}
+			return Fix64Zero, PositiveOverflowError{}
 		}
 		return Fix64(a), nil
 	} else {
@@ -202,7 +202,7 @@ func (a UFix64) FMD(b, c UFix64, round RoundingMode) (UFix64, error) {
 
 	// If the hi part is >= the divisor the result can't fit in 64 bits.
 	if UFix64(hi).Gte(c) {
-		return UFix64Zero, OverflowError{}
+		return UFix64Zero, PositiveOverflowError{}
 	}
 
 	quo, rem := div64(hi, lo, raw64(c))
@@ -213,7 +213,7 @@ func (a UFix64) FMD(b, c UFix64, round RoundingMode) (UFix64, error) {
 
 		// Make sure we don't "round up" to a value outside of the range of UFix64!
 		if carry != 0 {
-			return UFix64Zero, OverflowError{}
+			return UFix64Zero, PositiveOverflowError{}
 		}
 	}
 
@@ -443,7 +443,7 @@ func (a Fix64) Exp() (UFix64, error) {
 
 	// We can quickly check to see if the input will overflow or underflow
 	if a.Gt(maxLn64) {
-		return UFix64Zero, OverflowError{}
+		return UFix64Zero, PositiveOverflowError{}
 	} else if a.Lt(minLn64) {
 		return UFix64Zero, UnderflowError{}
 	}
