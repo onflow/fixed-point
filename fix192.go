@@ -27,42 +27,42 @@ type fix192 struct {
 }
 
 // Returns the absolute value of the fix192 value, and a sign integer (1 or -1) matching the original sign
-func (x fix192) abs() (fix192, int64) {
-	if isNeg64(x.Hi) {
-		return x.neg(), -1
+func (a fix192) abs() (fix192, int64) {
+	if isNeg64(a.Hi) {
+		return a.neg(), -1
 	}
 
-	return x, 1
+	return a, 1
 }
 
 // Returns the arithmetic inverse of the fix192 value, i.e. -x.
-func (x fix192) neg() fix192 {
-	return fix192{}.sub(x)
+func (a fix192) neg() fix192 {
+	return fix192{}.sub(a)
 }
 
 // Apply the sign to the fix192 value, returning an error if the value has a magnintude that is too
 // large to represent as a signed value.
-func (x fix192) applySign(sign int64) (fix192, error) {
+func (a fix192) applySign(sign int64) (fix192, error) {
 	// If the input is zero, we can just return it as is.
-	if x.isZero() {
-		return x, nil
+	if a.isZero() {
+		return a, nil
 	}
 
 	if sign < 0 {
-		x = x.neg()
+		a = a.neg()
 
 		// If trying to make it negative didn't make it negative, the input is too
 		// large to represent as a negative value.
-		if !isNeg64(x.Hi) {
+		if !isNeg64(a.Hi) {
 			return fix192Zero, NegativeOverflowError{}
 		}
-	} else if isNeg64(x.Hi) {
+	} else if isNeg64(a.Hi) {
 		// If the input reads as negative but wasn't sign flipped, then the input
 		// is too big to represent as a signed value.
 		return fix192Zero, OverflowError{}
 	}
 
-	return x, nil
+	return a, nil
 }
 
 // Returns true if the fix192 value is zero, false otherwise.
@@ -96,21 +96,21 @@ func (a Fix64) toFix192() fix192 {
 }
 
 // Converts a UFix128 value to a fix192 value.
-func (x UFix128) toFix192() fix192 {
-	return fix192{x.Hi, x.Lo, raw64(0)}
+func (a UFix128) toFix192() fix192 {
+	return fix192{a.Hi, a.Lo, raw64(0)}
 }
 
 // Converts a Fix128 value to a fix192 value.
-func (x Fix128) toFix192() fix192 {
-	return fix192{x.Hi, x.Lo, raw64(0)}
+func (a Fix128) toFix192() fix192 {
+	return fix192{a.Hi, a.Lo, raw64(0)}
 }
 
 // Converts a fix192 value to a UFix64 value, returning an error if the value can't be represented
 // in 64 bits (Note: This includes underflow errors for non-zero values that would round to zero
 // when converted, callers should handle UnderflowError if they want to treat these values as zero).
-func (x fix192) toUFix64(round RoundingMode) (UFix64, error) {
+func (a fix192) toUFix64(round RoundingMode) (UFix64, error) {
 	// Return zero immediately when possible.
-	if x.isZero() {
+	if a.isZero() {
 		return UFix64Zero, nil
 	}
 
@@ -118,11 +118,11 @@ func (x fix192) toUFix64(round RoundingMode) (UFix64, error) {
 	// after division. Note that we use the same scale conversion factor as is used to convert
 	// between Fix64 and Fix128, since fix192 is just Fix128 with 64 more bits of precision tacked
 	// on
-	if !ult64(x.Hi, scaleFactor64To128) {
+	if !ult64(a.Hi, scaleFactor64To128) {
 		return UFix64Zero, OverflowError{}
 	}
 
-	scaledX, _ := div192by64(x.Hi, x.Mid, x.Lo, scaleFactor64To128)
+	scaledX, _ := div192by64(a.Hi, a.Mid, a.Lo, scaleFactor64To128)
 
 	// We've now scaled the fix192 value down to fit within the UFix64 range, but we still have
 	// the extra 64-bits of precision. We can truncate the last 64 bits the same way we do when
@@ -137,7 +137,7 @@ func (x fix192) toUFix64(round RoundingMode) (UFix64, error) {
 	case RoundNearestHalfAway:
 		roundingAddend = raw64(0x8000000000000000)
 	case RoundNearestHalfEven:
-		roundingAddend = raw64(0x7fffffffffffffff + (x.Mid & 1))
+		roundingAddend = raw64(0x7fffffffffffffff + (a.Mid & 1))
 	case RoundAwayFromZero:
 		roundingAddend = raw64(0xffffffffffffffff)
 	default:
@@ -163,8 +163,8 @@ func (x fix192) toUFix64(round RoundingMode) (UFix64, error) {
 // Converts a fix192 value to a Fix64 value, returning an error if the value can't be represented
 // in 64 bits (Note: This includes underflow errors for non-zero values that would round to zero
 // when converted, callers should handle UnderflowError if they want to treat these values as zero).
-func (x fix192) toFix64(round RoundingMode) (Fix64, error) {
-	unsignedX, sign := x.abs()
+func (a fix192) toFix64(round RoundingMode) (Fix64, error) {
+	unsignedX, sign := a.abs()
 
 	res, err := unsignedX.toUFix64(round)
 
@@ -178,7 +178,7 @@ func (x fix192) toFix64(round RoundingMode) (Fix64, error) {
 // Converts a fix192 value to a UFix128 value, returning an error if the value can't be represented
 // in 128 bits (Note: This includes underflow errors for non-zero values that would round to zero
 // when converted, callers should handle UnderflowError if they want to treat these values as zero).
-func (x fix192) toUFix128(round RoundingMode) (UFix128, error) {
+func (a fix192) toUFix128(round RoundingMode) (UFix128, error) {
 	// A value to be added to the input such that when we truncate the result AFTER adding, we
 	// get the correct result as though we rounded.
 	var roundingAddend raw64
@@ -189,21 +189,21 @@ func (x fix192) toUFix128(round RoundingMode) (UFix128, error) {
 	case RoundNearestHalfAway:
 		roundingAddend = raw64(0x8000000000000000)
 	case RoundNearestHalfEven:
-		roundingAddend = raw64(0x7fffffffffffffff + (x.Mid & 1))
+		roundingAddend = raw64(0x7fffffffffffffff + (a.Mid & 1))
 	case RoundAwayFromZero:
 		roundingAddend = raw64(0xffffffffffffffff)
 	default:
 		panic("invalid rounding mode")
 	}
 
-	roundedX, carry := add192(x, fix192{0, 0, roundingAddend}, 0)
+	roundedX, carry := add192(a, fix192{0, 0, roundingAddend}, 0)
 
 	if carry != 0 {
 		// Rounding caused an overflow
 		return UFix128Zero, OverflowError{}
 	}
 
-	if isZero64(roundedX.Hi) && isZero64(roundedX.Mid) && !isZero64(x.Lo) {
+	if isZero64(roundedX.Hi) && isZero64(roundedX.Mid) && !isZero64(a.Lo) {
 		// If the high and mid parts are zero after rounding, and the original low part was
 		// non-zero, we flag underflow
 		return UFix128Zero, UnderflowError{}
@@ -215,8 +215,8 @@ func (x fix192) toUFix128(round RoundingMode) (UFix128, error) {
 // Converts a fix192 value to a Fix128 value, returning an error if the value can't be represented
 // in 128 bits (Note: This includes underflow errors for non-zero values that would round to zero
 // when converted, callers should handle UnderflowError if they want to treat these values as zero).
-func (x fix192) toFix128(round RoundingMode) (Fix128, error) {
-	unsignedX, sign := x.abs()
+func (a fix192) toFix128(round RoundingMode) (Fix128, error) {
+	unsignedX, sign := a.abs()
 
 	unsignedRes, err := unsignedX.toUFix128(round)
 
@@ -306,7 +306,7 @@ func (a fix192) umul(b fix192) (fix192, error) {
 	rawProductHi = ushiftRight128(rawProductHi, 24)
 
 	// The final result will overflow unless the top word (rawProductHi.Hi) is zero, and the
-	// second highest word (rawProductHi.Lo) is less than fiveToThe24th.
+	// second-highest word (rawProductHi.Lo) is less than fiveToThe24th.
 	if !isZero64(rawProductHi.Hi) || !ult64(rawProductHi.Lo, fiveToThe24) {
 		return fix192{}, OverflowError{}
 	}
@@ -368,13 +368,13 @@ func (a fix192) intMul(b int64) fix192 {
 }
 
 // Performs a left shift on a fix192 value, shifting the bits to the left by the specified amount.
-func (x fix192) shiftLeft(shift uint64) (res fix192) {
+func (a fix192) shiftLeft(shift uint64) (res fix192) {
 	if shift == 0 {
-		return x
+		return a
 	} else if shift >= 128 {
 		shift -= 128
 
-		res.Hi = shiftLeft64(x.Lo, shift)
+		res.Hi = shiftLeft64(a.Lo, shift)
 		res.Mid = 0
 		res.Lo = 0
 
@@ -382,18 +382,18 @@ func (x fix192) shiftLeft(shift uint64) (res fix192) {
 	} else if shift >= 64 {
 		shift -= 64
 
-		res.Hi = shiftLeft64(x.Mid, shift)
-		res.Hi |= ushiftRight64(x.Lo, 64-shift)
-		res.Mid = shiftLeft64(x.Lo, shift)
+		res.Hi = shiftLeft64(a.Mid, shift)
+		res.Hi |= ushiftRight64(a.Lo, 64-shift)
+		res.Mid = shiftLeft64(a.Lo, shift)
 		res.Lo = 0
 
 		return res
 	} else {
-		res.Hi = shiftLeft64(x.Hi, shift)
-		res.Hi |= ushiftRight64(x.Mid, 64-shift)
-		res.Mid = shiftLeft64(x.Mid, shift)
-		res.Mid |= ushiftRight64(x.Lo, 64-shift)
-		res.Lo = shiftLeft64(x.Lo, shift)
+		res.Hi = shiftLeft64(a.Hi, shift)
+		res.Hi |= ushiftRight64(a.Mid, 64-shift)
+		res.Mid = shiftLeft64(a.Mid, shift)
+		res.Mid |= ushiftRight64(a.Lo, 64-shift)
+		res.Lo = shiftLeft64(a.Lo, shift)
 
 		return res
 	}
@@ -401,13 +401,13 @@ func (x fix192) shiftLeft(shift uint64) (res fix192) {
 
 // Performs an unsigned right shift on a fix192 value, shifting the bits to the right by the
 // specified amount.
-func (x fix192) ushiftRight(shift uint64) (res fix192) {
+func (a fix192) ushiftRight(shift uint64) (res fix192) {
 	if shift == 0 {
-		return x
+		return a
 	} else if shift >= 128 {
 		shift -= 128
 
-		res.Lo = ushiftRight64(x.Hi, shift)
+		res.Lo = ushiftRight64(a.Hi, shift)
 		res.Mid = 0
 		res.Hi = 0
 
@@ -415,18 +415,18 @@ func (x fix192) ushiftRight(shift uint64) (res fix192) {
 	} else if shift >= 64 {
 		shift -= 64
 
-		res.Lo = ushiftRight64(x.Mid, shift)
-		res.Lo |= shiftLeft64(x.Hi, 64-shift)
-		res.Mid = ushiftRight64(x.Hi, shift)
+		res.Lo = ushiftRight64(a.Mid, shift)
+		res.Lo |= shiftLeft64(a.Hi, 64-shift)
+		res.Mid = ushiftRight64(a.Hi, shift)
 		res.Hi = 0
 
 		return res
 	} else {
-		res.Lo = ushiftRight64(x.Lo, shift)
-		res.Lo |= shiftLeft64(x.Mid, 64-shift)
-		res.Mid = ushiftRight64(x.Mid, shift)
-		res.Mid |= shiftLeft64(x.Hi, 64-shift)
-		res.Hi = ushiftRight64(x.Hi, shift)
+		res.Lo = ushiftRight64(a.Lo, shift)
+		res.Lo |= shiftLeft64(a.Mid, 64-shift)
+		res.Mid = ushiftRight64(a.Mid, shift)
+		res.Mid |= shiftLeft64(a.Hi, 64-shift)
+		res.Hi = ushiftRight64(a.Hi, shift)
 
 		return res
 	}
@@ -435,29 +435,29 @@ func (x fix192) ushiftRight(shift uint64) (res fix192) {
 // Computes the natural logarithm of an unsigned fix192 value, returning an error if the input is zero.
 // Note that the input is treated as an UNSIGNED value, but the output should be interpreted as a
 // SIGNED value.
-func (x fix192) ln() (fix192, error) {
-	if x.isZero() {
+func (a fix192) ln() (fix192, error) {
+	if a.isZero() {
 		return fix192Zero, OutOfDomainErrorError{}
 	}
 
-	if x.isEqual(fix192One) {
+	if a.isEqual(fix192One) {
 		return fix192Zero, nil
 	}
 
 	var scaledX fix192
 
-	// The Chebyshev polynomials for ln(x) are defined in the range where the input value has the
+	// The Chebyshev polynomials for ln(a) are defined in the range where the input value has the
 	// same number of zeros as the representation of "one". Since the upper two words of a fix192
 	// simply "are" a valid Fix128 value, we can use the same constant for "the number of leading
 	// zero bits of the representation of 1".
-	k := Fix128OneLeadingZeros - int64(leadingZeroBits192(x))
+	k := Fix128OneLeadingZeros - int64(leadingZeroBits192(a))
 
 	// Scale the input value by 2^k, so that it falls into the range where the Chebyshev polynomials
 	// are defined.
 	if k >= 0 {
-		scaledX = x.ushiftRight(uint64(k))
+		scaledX = a.ushiftRight(uint64(k))
 	} else if k < 0 {
-		scaledX = x.shiftLeft(uint64(-k))
+		scaledX = a.shiftLeft(uint64(-k))
 	}
 
 	// Binary search to find the largest index where lnBounds[index] <= scaledX
@@ -486,24 +486,24 @@ func (x fix192) ln() (fix192, error) {
 // Computes the exponential of a fix192 value (e^x), returning an error if the input is too large or
 // too small to be represented as a fix192 value. The input is treated as a SIGNED value, but the
 // output should be interpreted as an UNSIGNED value.
-func (x fix192) exp() (fix192, error) {
-	xUnsigned, sign := x.abs()
+func (a fix192) exp() (fix192, error) {
+	xUnsigned, sign := a.abs()
 
-	// We compute exp(x) by using the identity:
-	//     exp(x) = exp(i + f) = exp(i) * exp(f)
-	// where i is the integer part and f is the fractional part of x.
+	// We compute exp(a) by using the identity:
+	//     exp(a) = exp(i + f) = exp(i) * exp(f)
+	// where i is the integer part and f is the fractional part of a.
 	//
-	// The easist way to do this would be to divide x by the value of one in fix192, using the
+	// The easiest way to do this would be to divide `a` by the value of one in fix192, using the
 	// quotient as the integer part and the remainder as the fractional part. However, we don't have
 	// a 192x192 division, and the value of one in fix192 extends over all 3 words. However, we can
 	// use the fact that the value of one in fix192 is 10**24 * 2**64, which is equivalent to 5^24 *
 	// 2^24 * 2^64. If we divide both the numerator and denominator by the same value, the quotient
 	// will be the same, and the remainder will be scaled down by that value.
 	//
-	// So, we scale x by 2^24 * 2^64, which is equivalent to dropping the last word, and shifting
+	// So, we scale `a` by 2^24 * 2^64, which is equivalent to dropping the last word, and shifting
 	// the result by 24. We then divide the result by 5^24, which is a 64-bit value.
 
-	// The value of x, after dropping the lower 64 bits
+	// The value of `a`, after dropping the lower 64 bits
 	xTop := raw128{xUnsigned.Hi, xUnsigned.Mid}
 
 	// Shift by 24 bits, which is equivalent to dividing by 2^24
@@ -519,7 +519,7 @@ func (x fix192) exp() (fix192, error) {
 	f := fix192{rem >> 40, rem<<24 | xUnsigned.Mid&0xffffff, xUnsigned.Lo}
 	fIsNonZero := !f.isZero()
 
-	// We now have the integer part, i, and the fractional part, f of abs(x). If sign is negative, we need to
+	// We now have the integer part, i, and the fractional part, f of abs(a). If sign is negative, we need to
 	// flip the sign of the result. Additionally, if the fractional part is non-zero, we subtract it from one
 	// so that f is added to i, not subtracted from it.
 	if sign < 0 {
@@ -530,7 +530,7 @@ func (x fix192) exp() (fix192, error) {
 		}
 	}
 
-	// Determine the index of the exponential power in our table of e^x values.
+	// Determine the index of the exponential power in our table of e^a values.
 	intPowerIndex := int64(i) - smallestExpIntPower
 
 	// If the integer points to a value outside the range of the lookup table, we know that value
@@ -586,12 +586,12 @@ func (a fix192) pow(b fix192) (fix192, error) {
 
 // Computes the sine of a fix192 value, returns an error for symmetry with other functions, but
 // can't actually fail...
-func (x fix192) sin() (fix192, error) {
+func (a fix192) sin() (fix192, error) {
 	// Normalize the input angle to the range [0, π], with a flag indicating
 	// if the result should be interpreted as negative.
-	clampedX, sign := x.clampAngle()
+	clampedX, sign := a.clampAngle()
 
-	// Leverage the identity sin(x) = sin(π - x) to keep the input angle in the range [0, π/2]
+	// Leverage the identity sin(a) = sin(π - a) to keep the input angle in the range [0, π/2]
 	if fix192HalfPi.ult(clampedX) {
 		clampedX = fix192Pi.sub(clampedX)
 	}
@@ -603,25 +603,25 @@ func (x fix192) sin() (fix192, error) {
 
 // Computes the cosine of a fix192 value, returns an error for symmetry with other functions, but
 // can't actually fail...
-func (x fix192) cos() (fix192, error) {
+func (a fix192) cos() (fix192, error) {
 	// Normalize the input angle to the range [0, π], with a flag indicating
 	// if the result should be interpreted as negative.
-	clampedX, _ := x.clampAngle()
+	clampedX, _ := a.clampAngle()
 	sign := int64(1)
 
-	// We use the following identities to compute cos(x):
-	//     cos(x) = sin(π/2 - x)
-	//     cos(x) = -sin(x - π/2)
-	// If x is is less than or equal to π/2, we can use the first identity, if x is greater than
+	// We use the following identities to compute cos(a):
+	//     cos(a) = sin(π/2 - a)
+	//     cos(a) = -sin(a - π/2)
+	// If `a` is less than or equal to π/2, we can use the first identity, if `a` is greater than
 	// π/2, we use the second identity. In both cases, we end up with a value in the range [0, π/2],
 	// to use with the Chebyshev polynomial.
 	var y fix192
 
 	if clampedX.ult(fix192HalfPi) {
-		// cos(x) = sin(π/2 - x)
+		// cos(a) = sin(π/2 - a)
 		y = fix192HalfPi.sub(clampedX)
 	} else {
-		// cos(x) = -sin(x - π/2)
+		// cos(a) = -sin(a - π/2)
 		y = clampedX.sub(fix192HalfPi)
 		sign *= -1
 	}
@@ -650,8 +650,8 @@ func leadingZeroBits192(a fix192) uint64 {
 //  1. The input x is always positive (accum can be negative).
 //  2. The coefficients are prescaled such that this multiplication can scale down by 2**145 (which
 //     is a simple shift) instead of 2**64 * 10**24 (which involves a division).
-func (accum fix192) chebyMul(x fix192) fix192 {
-	a, aSign := accum.abs()
+func (a fix192) chebyMul(x fix192) fix192 {
+	a, aSign := a.abs()
 
 	var res fix192
 	var carry1, carry2 uint64
@@ -686,12 +686,12 @@ func (accum fix192) chebyMul(x fix192) fix192 {
 }
 
 // Computes a Chebyshev polynomial using the coefficients provided.
-func (x fix192) chebyPoly(coeffs []fix192) fix192 {
+func (a fix192) chebyPoly(coeffs []fix192) fix192 {
 	// Compute the Chebyshev polynomial using Horner's method.
 	accum := coeffs[0]
 
 	for i := 1; i < len(coeffs); i++ {
-		accum = accum.chebyMul(x)
+		accum = accum.chebyMul(a)
 		accum = accum.add(coeffs[i])
 	}
 
@@ -700,8 +700,8 @@ func (x fix192) chebyPoly(coeffs []fix192) fix192 {
 
 // Clamps the input angle to the range [-π, π] by removing multiples of 2π. The result is the positive
 // clamped value and a sign integer (1 or -1).
-func (x fix192) clampAngle() (fix192, int64) {
-	xUnsigned, sign := x.abs()
+func (a fix192) clampAngle() (fix192, int64) {
+	xUnsigned, sign := a.abs()
 
 	if xUnsigned.ult(fix192Pi) {
 		// If the input is already less than π, we can just return it as is.
@@ -709,7 +709,7 @@ func (x fix192) clampAngle() (fix192, int64) {
 	} else if fix192TwoPi.ult(xUnsigned) {
 		// If the input is larger than 2π, we we want to find the angle modulo 2π. The most obvious
 		// way to do this would be to do a 192x192 division by a fix192 representation of 2π, and to
-		// look at the remainder. However implementing that division is non-trivial and (somewhat
+		// look at the remainder. However, implementing that division is non-trivial and (somewhat
 		// surprisingly!) we don't need 192x192 division for any other operations. Given that we
 		// know the divisor is _always_ 2π, we can craft a special modulus operation that is quite
 		// efficient.
@@ -729,50 +729,50 @@ func (x fix192) clampAngle() (fix192, int64) {
 		// doing the same thing, but with a denominator much larger than 7 or 113.)
 		//
 		// Let's call that "magic multiple" m. So m = k•2π, where k is some large integer. Our
-		// input, x, is conceptually a real number, but what we actually have is x * 10^24 * 2^64
-		// (the scale of fix192). So, we want to compute floor(x / 2π), but we're starting with the
-		// scaled value of x and m, so, it would be straightforward for us to compute the value s
-		// such that, s = (x • 10^24 • 2•64) / m, which is (by expanding m = k•2π):
+		// input, `a`, is conceptually a real number, but what we actually have is `a * 10^24 * 2^64`
+		// (the scale of fix192). So, we want to compute `floor(a / 2π)`, but we're starting with the
+		// scaled value of `a` and `m`, so, it would be straightforward for us to compute the value s
+		// such that, s = (a • 10^24 • 2•64) / m, which is (by expanding m = k•2π):
 		//
-		//       (x • 10^24 • 2^64)
+		//       (a • 10^24 • 2^64)
 		//  s =  ------------------
 		//            (k • 2π)
 		//
 		// Once we have s, we can rearrange this equation to solve for the value we REALLY want:
 		//
-		//        s•k          x
+		//        s•k          a
 		//  -------------- = ----
 		//  (10^24 • 2^64)    2π
 		//
 		// What this tells us is once we compute s (via the 192x64 bit division operation), we can
 		// just multiply that value by k (the scale factor used for m) and then divide by the scale
 		// factor of fix192 (10^24 • 2^64). Provided m / k is a close approximation of 2π, we should
-		// have the integer part of x / 2π which we can then use to compute the remainder.
+		// have the integer part of `a/2π` which we can then use to compute the remainder.
 		//
 		// Dividing by 10^24 • 2^64 can be partially managed by a shift by 24 + 64, and then a
 		// division by 5^24. This is another 192x64 division (which isn't terribly expensive), but
 		// we can get rid of it entirely if choose a value for k that is itself a multiple of 5^24!
 		// If we chose k = j•5^24 for some integer j, then we can replace the equation above with:
 		//
-		//     s•j•5^24        x
+		//     s•j•5^24        a
 		//  -------------- = ----
 		//  (10^24 • 2^64)    2π
 		//
 		// If we then expand 10^24 into 5^24 • 2^24:
 		//
-		//        s•j•5^24           x
+		//        s•j•5^24           a
 		//  -------------------- = ----
 		//  (5^24 • 2^24 • 2^64)    2π
 		//
 		// Now the 5^24 terms cancel:
 		//
-		//       s•j          x
+		//       s•j          a
 		//  ------------- = ----
 		//  (2^24 • 2^64)    2π
 		//
 		// (Note that dividing by 2^64 is just dropping a 64-bit word.)
 		//
-		// So we're now able to compute x/2π by just dividing the fixed-point representation of x by
+		// So we're now able to compute a/2π by just dividing the fixed-point representation of a by
 		// m (called clampAngleTwoPiMultiple in code), giving us a value for s. Multiply that s
 		// value by j (called clampAngleTwoPiFactor in code), drop the bottom word (functionally
 		// dividing by 2^64), and shift the result right by 24 to perform the final division by
@@ -785,7 +785,7 @@ func (x fix192) clampAngle() (fix192, int64) {
 		// quotient of all possible input values will fit in 128 bits, simplifying the other
 		// multiplication and shifting operations.
 
-		// Compute s = x / m
+		// Compute s = a / m
 		s, _ := div192by64(xUnsigned.Hi, xUnsigned.Mid, xUnsigned.Lo, clampAngleTwoPiMultiple)
 
 		// Multiply s by j, dropping the bottom word to effectively divide by 2^64
@@ -796,7 +796,7 @@ func (x fix192) clampAngle() (fix192, int64) {
 		temp = ushiftRight128(temp, 24)
 
 		// We know that our real quotient will fit in 64 bits, so we can just take the lower
-		// 64 bits of the result and cast it to a uint64.
+		// 64 bits of the result and cast it to an uint64.
 		q := uint64(temp.Lo)
 
 		// Now we use a simple product to compute the sum of all of the "whole" multiples of 2π that
