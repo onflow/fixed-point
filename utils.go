@@ -80,7 +80,7 @@ func (a Fix128) ToFix64(round RoundingMode) (Fix64, error) {
 	res, err := unsignedX.ToUFix64(round)
 
 	if err != nil {
-		return Fix64Zero, err
+		return Fix64Zero, applySign(err, sign)
 	}
 
 	return res.ApplySign(sign)
