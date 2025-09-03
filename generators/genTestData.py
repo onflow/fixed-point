@@ -85,6 +85,7 @@ operations = {
     "Sin": (lambda a: decSin(a), "sin({}) = {}"),
     "Cos": (lambda a: decCos(a), "cos({}) = {}"),
     "Tan": (lambda a: decTan(a), "tan({}) = {}"),
+    "Conv": (lambda a: a, "conv({}) = {}"),
 }
 
 types = {
@@ -166,10 +167,15 @@ def main():
                 exit("Pow operation requires an unsigned output type (UFix64 or UFix128).")
 
             argTypes = [outputType, outputType[1:]]  # first argument unsigned, second is signed
+        case "Conv":
+            # Conv goes 128 -> 64
+            if outputType[-3:] != '128':
+                exit("Conv operation requires a 128-bit type (UFix128 or Fix128).")
+
         case _:
             pass  # No change needed for other operations
 
-    bitLength = "64" if outputType[-1] == '4' else "128"
+    bitLength = "64" if argTypes[0][-1] == '4' else "128"
 
     baseData = globals()[f"BaseData{bitLength}"]
     extraData = globals()[f"ExtraData{bitLength}"]
@@ -242,8 +248,8 @@ def main():
             err = "Underflow"
 
         if operation == "Pow" and values[0] == 0:
-            # The Decimal library treats 0^x differently that we want to, so we override
-            # some if its behavior here
+            # The Decimal library treats 0^x differently than we want to, so we override
+            # some of its behavior here
             if values[1] < 0:
                 err = "DivByZero"
                 result = Decimal(0)
@@ -253,6 +259,27 @@ def main():
             else:
                 err = None
                 result = Decimal(0)
+
+        if operation == "Conv":
+            # The Conv operation is a no-op, but we use it to test rounding. So, we will
+            # simulate a rounding operation here.
+            roundedTypeName = "UFix64" if outputType[0] == 'U' else "Fix64"
+            roundedTypeInfo = types[roundedTypeName]
+
+            # Re-round the result to the 64-bit precision and check against the bounds of the type
+            roundedResult = result.quantize(roundedTypeInfo[2], rounding=rounding)
+            if not result.is_zero() and roundedResult.is_zero():
+                err = "Underflow"
+                result = Decimal(0)
+            elif roundedResult < roundedTypeInfo[0]:
+                err = "NegOverflow"
+                result = Decimal(0)
+            elif roundedResult > roundedTypeInfo[1]:
+                err = "Overflow"
+                result = Decimal(0)
+            else:
+                err = None
+                result = roundedResult
 
         # Wrap arguments in parentheses if they contain spaces (for readability)
         if argCount > 1:

@@ -693,6 +693,174 @@ func TestModFix128(t *testing.T) {
 	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
 }
 
+func TestRoundUpUFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Conv",
+		round:     "ROUND_UP",
+	}
+
+	for tc := range OneArgTestChannel128(t, &testState) {
+		a := UFix128(tc.A)
+		res64, err := a.ToUFix64(RoundUp)
+
+		res := res64.ToUFix128()
+
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestRoundUpFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Conv",
+		round:     "ROUND_UP",
+	}
+
+	for tc := range OneArgTestChannel128(t, &testState) {
+		a := Fix128(tc.A)
+		res64, err := a.ToFix64(RoundUp)
+
+		res := res64.ToFix128()
+
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestRoundDownUFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Conv",
+		round:     "ROUND_DOWN",
+	}
+
+	for tc := range OneArgTestChannel128(t, &testState) {
+		a := UFix128(tc.A)
+		res64, err := a.ToUFix64(RoundDown)
+
+		res := res64.ToUFix128()
+
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestRoundDownFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Conv",
+		round:     "ROUND_DOWN",
+	}
+
+	for tc := range OneArgTestChannel128(t, &testState) {
+		a := Fix128(tc.A)
+		res64, err := a.ToFix64(RoundDown)
+
+		res := res64.ToFix128()
+
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestRoundHalfUpUFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Conv",
+		round:     "ROUND_HALF_UP",
+	}
+
+	for tc := range OneArgTestChannel128(t, &testState) {
+		a := UFix128(tc.A)
+		res64, err := a.ToUFix64(RoundHalfUp)
+
+		res := res64.ToUFix128()
+
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestRoundHalfUpFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Conv",
+		round:     "ROUND_HALF_UP",
+	}
+
+	for tc := range OneArgTestChannel128(t, &testState) {
+		a := Fix128(tc.A)
+		res64, err := a.ToFix64(RoundHalfUp)
+
+		res := res64.ToFix128()
+
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestRoundHalfEvenUFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "Conv",
+		round:     "ROUND_HALF_EVEN",
+	}
+
+	for tc := range OneArgTestChannel128(t, &testState) {
+		a := UFix128(tc.A)
+		res64, err := a.ToUFix64(RoundHalfEven)
+
+		res := res64.ToUFix128()
+
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestRoundHalfEvenFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "Conv",
+		round:     "ROUND_HALF_EVEN",
+	}
+
+	for tc := range OneArgTestChannel128(t, &testState) {
+		a := Fix128(tc.A)
+		res64, err := a.ToFix64(RoundHalfEven)
+
+		res := res64.ToFix128()
+
+		OneArgResultCheck128(t, &testState, tc, raw128(res), err)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
 func TestSqrtUFix128(t *testing.T) {
 
 	t.Parallel()
