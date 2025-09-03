@@ -426,6 +426,165 @@ func ThreeArgResultCheck64(t *testing.T, ts *TestState, tc ThreeArgTestCase64, a
 	return true
 }
 
+func b2i(b bool) uint64 {
+	if b {
+		return uint64(UFix64One)
+	}
+	return 0
+}
+
+func TestLtFix64(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix64",
+		operation: "LessThan",
+	}
+
+	for tc := range TwoArgTestChannel64(t, testState) {
+		a := Fix64(tc.A)
+		b := Fix64(tc.B)
+		res := a.Lt(b)
+
+		TwoArgResultCheck64(t, &testState, tc, b2i(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestLtUFix64(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix64",
+		operation: "LessThan",
+	}
+
+	for tc := range TwoArgTestChannel64(t, testState) {
+		a := UFix64(tc.A)
+		b := UFix64(tc.B)
+		res := a.Lt(b)
+
+		TwoArgResultCheck64(t, &testState, tc, b2i(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestLteFix64(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix64",
+		operation: "LessThanEqual",
+	}
+
+	for tc := range TwoArgTestChannel64(t, testState) {
+		a := Fix64(tc.A)
+		b := Fix64(tc.B)
+		res := a.Lte(b)
+
+		TwoArgResultCheck64(t, &testState, tc, b2i(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestLteUFix64(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix64",
+		operation: "LessThanEqual",
+	}
+
+	for tc := range TwoArgTestChannel64(t, testState) {
+		a := UFix64(tc.A)
+		b := UFix64(tc.B)
+		res := a.Lte(b)
+
+		TwoArgResultCheck64(t, &testState, tc, b2i(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestGtFix64(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix64",
+		operation: "GreaterThan",
+	}
+
+	for tc := range TwoArgTestChannel64(t, testState) {
+		a := Fix64(tc.A)
+		b := Fix64(tc.B)
+		res := a.Gt(b)
+
+		TwoArgResultCheck64(t, &testState, tc, b2i(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestGtUFix64(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix64",
+		operation: "GreaterThan",
+	}
+
+	for tc := range TwoArgTestChannel64(t, testState) {
+		a := UFix64(tc.A)
+		b := UFix64(tc.B)
+		res := a.Gt(b)
+
+		TwoArgResultCheck64(t, &testState, tc, b2i(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestGteFix64(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix64",
+		operation: "GreaterThanEqual",
+	}
+
+	for tc := range TwoArgTestChannel64(t, testState) {
+		a := Fix64(tc.A)
+		b := Fix64(tc.B)
+		res := a.Gte(b)
+
+		TwoArgResultCheck64(t, &testState, tc, b2i(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestGteUFix64(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix64",
+		operation: "GreaterThanEqual",
+	}
+
+	for tc := range TwoArgTestChannel64(t, testState) {
+		a := UFix64(tc.A)
+		b := UFix64(tc.B)
+		res := a.Gte(b)
+
+		TwoArgResultCheck64(t, &testState, tc, b2i(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
 func TestAddUFix64(t *testing.T) {
 
 	t.Parallel()

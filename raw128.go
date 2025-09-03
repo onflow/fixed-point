@@ -267,7 +267,7 @@ func ult128(a, b raw128) bool {
 func slt128(a, b raw128) bool {
 	if isEqual64(a.Hi, b.Hi) {
 		// If the high parts are equal, compare the low parts.
-		return slt64(a.Lo, b.Lo)
+		return ult64(a.Lo, b.Lo)
 	} else {
 		// If the high parts are not equal, compare them directly.
 		return slt64(a.Hi, b.Hi)
