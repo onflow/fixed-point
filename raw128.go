@@ -20,7 +20,7 @@ import "math/bits"
 
 var raw128Zero = raw128{0, 0}
 
-// This file contains methods for raw64 to provide all of the basic functionality that
+// This file contains methods for raw128 to provide all of the basic functionality that
 // is required for the Fix128 and UFix128 types. All of the functions in this file have
 // direct analogues in the raw64.go file, but they operate on 128-bit values instead
 // of 64-bit values, and – in some cases – are much more complex because of it.
@@ -185,18 +185,16 @@ func neg128(a raw128) raw128 {
 func ushouldRound128(q, r, b raw128, round RoundingMode) bool {
 	switch round {
 	case RoundTowardZero:
-	default:
 		return false // Always truncate towards zero, no rounding.
 	case RoundAwayFromZero:
 		return !isZero128(r) // Round away from zero, so if there's any remainder, round up.
-	case RoundNearestHalfAway:
-	case RoundNearestHalfEven:
+	case RoundNearestHalfAway, RoundNearestHalfEven:
 		// Determing if a particular remainder results in rounding isn't as simple
 		// as just checking if r >= b/2, because dividing b by two *loses precision*.
 		// A more accurate solution would be to multiply the remainder by 2 and compare
 		// it to b, but that can overflow if the remainder is large.
 		//
-		// However, we KNOW the remainder is less than b, and we know that b fits in 64 bits;
+		// However, we KNOW the remainder is less than b, and we know that b fits in 128 bits;
 		// if the remainder were so large that multiplying it by 2 would overflow,
 		// then it must also be larger than half b. So, we first check to see if it WOULD
 		// overflow when doubled (in which case it is definitely larger than b/2),
@@ -223,18 +221,10 @@ func ushouldRound128(q, r, b raw128, round RoundingMode) bool {
 				return q.Lo&1 == 1
 			}
 		}
+	default:
+		panic("unsupported rounding mode")
 	}
-
-	return false
 }
-
-// func sshouldRound128(r, b raw128) bool {
-// 	// For signed types, we CAN just multiply the remainder by 2 and compare it to b;
-// 	// any signed positive value (and remainders are always positive) can be safely doubled
-// 	// within the space of an unsigned value.
-// 	twoR := shiftLeft128(r, 1)
-// 	return ult128(b, twoR)
-// }
 
 func leadingZeroBits128(a raw128) uint64 {
 	// Count the number of leading zero bits in a raw128 value.
@@ -311,11 +301,6 @@ func sshiftRight128(a raw128, shift uint64) raw128 {
 	}
 
 	return raw128{Hi: raw64(int64(a.Hi) >> shift), Lo: raw64(int64(a.Lo)>>shift) | (a.Hi << (64 - shift))}
-}
-
-func unscaledRaw128(a uint64) raw128 {
-	// Convert a uint64 value to a raw64 value without scaling.
-	return raw128{0, raw64(a)}
 }
 
 // Helper functions for the multiplication and division algorithms above
