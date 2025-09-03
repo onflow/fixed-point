@@ -71,6 +71,10 @@ def decClamp(x: Decimal) -> Decimal:
     return x
 
 operations = {
+    "LessThan": (lambda a, b: a < b, "{} < {} = {}"),
+    "LessThanEqual": (lambda a, b: a <= b, "{} <= {} = {}"),
+    "GreaterThan": (lambda a, b: a > b, "{} > {} = {}"),
+    "GreaterThanEqual": (lambda a, b: a >= b, "{} >= {} = {}"),
     "Add": (lambda a, b: a + b, "{} + {} = {}"),
     "Sub": (lambda a, b: a - b, "{} - {} = {}"),
     "Mul": (lambda a, b: a * b, "{} * {} = {}"),
@@ -209,7 +213,7 @@ def main():
         err = None
 
         try:
-            result = operationFunc(*values)
+            result = Decimal(operationFunc(*values))
             if result > 2**128:
                 # The exp() operator can produce VERY large results, which can break
                 # the quantization call below. We know that any value larger than 2**128

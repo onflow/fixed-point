@@ -463,6 +463,157 @@ func ThreeArgResultCheck128(t *testing.T, ts *TestState, tc ThreeArgTestCase128,
 	return true
 }
 
+func b2i128(b bool) raw128 {
+	if b {
+		return raw128(UFix128One)
+	}
+	return raw128{}
+}
+
+func TestLtFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "LessThan",
+	}
+
+	for tc := range TwoArgTestChannel128(t, &testState) {
+		a := Fix128(tc.A)
+		b := Fix128(tc.B)
+		res := a.Lt(b)
+		TwoArgResultCheck128(t, &testState, tc, b2i128(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestLtUFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "LessThan",
+	}
+
+	for tc := range TwoArgTestChannel128(t, &testState) {
+		a := UFix128(tc.A)
+		b := UFix128(tc.B)
+		res := a.Lt(b)
+		TwoArgResultCheck128(t, &testState, tc, b2i128(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestLteFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "LessThanEqual",
+	}
+
+	for tc := range TwoArgTestChannel128(t, &testState) {
+		a := Fix128(tc.A)
+		b := Fix128(tc.B)
+		res := a.Lte(b)
+		TwoArgResultCheck128(t, &testState, tc, b2i128(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestLteUFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "LessThanEqual",
+	}
+
+	for tc := range TwoArgTestChannel128(t, &testState) {
+		a := UFix128(tc.A)
+		b := UFix128(tc.B)
+		res := a.Lte(b)
+		TwoArgResultCheck128(t, &testState, tc, b2i128(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestGtFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "GreaterThan",
+	}
+
+	for tc := range TwoArgTestChannel128(t, &testState) {
+		a := Fix128(tc.A)
+		b := Fix128(tc.B)
+		res := a.Gt(b)
+		TwoArgResultCheck128(t, &testState, tc, b2i128(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestGtUFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "GreaterThan",
+	}
+
+	for tc := range TwoArgTestChannel128(t, &testState) {
+		a := UFix128(tc.A)
+		b := UFix128(tc.B)
+		res := a.Gt(b)
+		TwoArgResultCheck128(t, &testState, tc, b2i128(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestGteFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "Fix128",
+		operation: "GreaterThanEqual",
+	}
+
+	for tc := range TwoArgTestChannel128(t, &testState) {
+		a := Fix128(tc.A)
+		b := Fix128(tc.B)
+		res := a.Gte(b)
+		TwoArgResultCheck128(t, &testState, tc, b2i128(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
+func TestGteUFix128(t *testing.T) {
+
+	t.Parallel()
+
+	testState := TestState{
+		outType:   "UFix128",
+		operation: "GreaterThanEqual",
+	}
+
+	for tc := range TwoArgTestChannel128(t, &testState) {
+		a := UFix128(tc.A)
+		b := UFix128(tc.B)
+		res := a.Gte(b)
+		TwoArgResultCheck128(t, &testState, tc, b2i128(res), nil)
+	}
+	t.Log(testState.operation+testState.outType, testState.successCount, "passed,", testState.failureCount, "failed")
+}
+
 func TestAddUFix128(t *testing.T) {
 
 	t.Parallel()
